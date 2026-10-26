@@ -51,11 +51,13 @@ MONGO_INITDB_ROOT_PASSWORD=clave_larga_1
 MONGO_APP_USERNAME=coraleum_api                # usuario que usa la API
 MONGO_APP_PASSWORD=clave_larga_2
 MONGO_DATABASE=proyecto_noaa
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173
 ENABLE_DOCS=false
+JWT_SECRET=clave_larga_3                       # firma de las sesiones (mín. 32 caracteres)
+COOKIE_SECURE=false                            # true solo con HTTPS
 ```
 
-Para generar claves seguras:
+Para generar claves seguras (para `JWT_SECRET` usa 48 en lugar de 24):
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(24))"
@@ -195,7 +197,75 @@ Devuelve la geometría real de las 47 áreas coralinas.
 
 ### `GET /health`
 
-Comprueba la conexión con MongoDB.
+Comprueba la conexión con MongoDB (público).
+
+### `GET /estadisticas`
+
+Totales de áreas, píxeles y fechas para la página de inicio (público, sin valores ambientales).
+
+### Autenticación y administración
+
+`POST /auth/registro`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`,
+`GET /auth/me`, `POST /auth/cambiar-password`, `POST /auth/solicitar-investigador`,
+`GET /admin/usuarios`, `PATCH /admin/usuarios/{id}`, `POST /admin/usuarios/{id}/solicitud`,
+`POST /admin/usuarios/{id}/restablecer-password`, `GET /admin/auditoria`, `GET /admin/integridad`.
+
+Las rutas de datos (`/fechas`, `/areas`, `/areas/{fid}`, `/areas/{fid}/historico`,
+`/resumen`, `/geojson`) requieren rol **investigador** o **admin**.
+
+## 7. Usuarios, roles e inicio de sesión
+
+| Rol | Cómo se obtiene | Acceso |
+|---|---|---|
+| Visitante | Sin cuenta | Inicio, Conoce los Corales, Estrés Térmico, Indicadores NOAA, Metodología, asistente Coral |
+| Usuario | Registro abierto en la aplicación | Lo anterior + solicitar acceso de investigador |
+| Investigador | Lo aprueba un administrador | + Explorador Térmico (mapa, fechas, detalle, histórico) y Resumen |
+| Administrador | Por consola (abajo) | Todo + gestión de usuarios, solicitudes y auditoría |
+
+La autorización se aplica en el **backend**: sin el rol, la API responde 401/403
+aunque se llame directamente.
+
+### Crear el primer administrador
+
+Con los contenedores encendidos:
+
+```bash
+docker compose exec backend python -m api.cli crear-admin
+```
+
+Pide correo, nombre y contraseña (oculta). Si el correo ya existe, ofrece
+convertir esa cuenta en administrador.
+
+### Recuperar una contraseña
+
+En **Administración → Usuarios → Restablecer clave** se genera una contraseña
+temporal que se muestra una sola vez. Al iniciar sesión con ella, el usuario
+debe crear una nueva antes de usar la aplicación.
+
+### Medidas de seguridad
+
+- Contraseñas con **Argon2id**; mínimo 10 caracteres y rechazo de contraseñas comunes.
+- Sesión en cookies **HttpOnly + SameSite=Strict** (JavaScript no puede leerlas):
+  token de acceso de 15 min y refresh token de 7 días, **rotativo** y guardado
+  como hash. Reutilizar un refresh token ya usado revoca todas las sesiones derivadas.
+- Protección **CSRF**: encabezado `X-Requested-With: Coraleum` y verificación de `Origin`.
+- **Bloqueo** de la cuenta 15 min tras 5 intentos fallidos y **límite de peticiones**
+  por IP en inicio de sesión y registro.
+- El rol se lee de la base de datos en cada petición: los cambios de rol y las
+  desactivaciones aplican de inmediato.
+- **Auditoría** de accesos (colección `auditoria_accesos`, 180 días) visible para el administrador.
+
+Con HTTPS en producción, pon `COOKIE_SECURE=true` en `.env` y agrega el dominio a `CORS_ORIGINS`.
+
+## 8. Pruebas automáticas
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+28 pruebas de autenticación, roles y protecciones; usan una base de datos
+simulada, no necesitan Docker.
 
 ## Nota sobre la clasificación
 

@@ -10,3 +10,6 @@ resultados
 scripts
 mongo-init
 *.md
+tests
+requirements-dev.txt
+.pytest_cache

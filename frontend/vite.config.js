@@ -11,6 +11,8 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
+        // La API no tiene el prefijo /api (igual que con Nginx).
+        rewrite: (ruta) => ruta.replace(/^\/api/, ''),
       },
     },
   },

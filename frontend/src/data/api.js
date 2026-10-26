@@ -9,24 +9,119 @@ export const CLASSIFICATIONS = ['Baja', 'Intermedia', 'Alta'];
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 const API_PREFIX = API_BASE ? '' : '/api';
 
-async function request(path, options = {}) {
+/** Error de la API con el código HTTP y la acción sugerida por el backend. */
+export class ApiError extends Error {
+  constructor(message, status, accion = null) {
+    super(message);
+    this.status = status;
+    this.accion = accion;
+  }
+}
+
+// Aviso global cuando la sesión venció o el backend exige otra acción.
+export const EVENTO_SESION = 'coraleum:sesion';
+
+let renovacionEnCurso = null;
+
+/** Renueva la sesión con el refresh token (cookie HttpOnly). Una sola a la vez. */
+function renovarSesion() {
+  if (!renovacionEnCurso) {
+    renovacionEnCurso = fetch(`${API_BASE}${API_PREFIX}/auth/refresh`, {
+      method: 'POST',
+      credentials: API_BASE ? 'include' : 'same-origin',
+      headers: { Accept: 'application/json', 'X-Requested-With': 'Coraleum' },
+    })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => { renovacionEnCurso = null; });
+  }
+  return renovacionEnCurso;
+}
+
+async function request(path, { method = 'GET', body, reintentar = true } = {}) {
+  const headers = { Accept: 'application/json' };
+  if (method !== 'GET') {
+    // Encabezado exigido por el backend en peticiones que modifican datos (CSRF).
+    headers['X-Requested-With'] = 'Coraleum';
+  }
+  if (body !== undefined) headers['Content-Type'] = 'application/json';
+
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: { Accept: 'application/json' },
-    ...options,
+    method,
+    headers,
+    // Las cookies de sesión son HttpOnly: el navegador las envía solo.
+    credentials: API_BASE ? 'include' : 'same-origin',
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
+
+  // Token de acceso vencido: se renueva una vez y se repite la petición.
+  if (response.status === 401 && reintentar && !path.includes('/auth/')) {
+    if (await renovarSesion()) {
+      return request(path, { method, body, reintentar: false });
+    }
+    window.dispatchEvent(new CustomEvent(EVENTO_SESION, { detail: { tipo: 'vencida' } }));
+  }
 
   if (!response.ok) {
     let detail = `Error HTTP ${response.status}`;
+    let accion = null;
     try {
-      const body = await response.json();
-      detail = body.detail || detail;
+      const data = await response.json();
+      detail = data.detail || detail;
+      accion = data.accion || null;
     } catch (_) {
-      // Keep the HTTP status when the response is not JSON.
+      // Se conserva el código HTTP cuando la respuesta no es JSON.
     }
-    throw new Error(detail);
+    if (accion === 'cambiar-password') {
+      window.dispatchEvent(new CustomEvent(EVENTO_SESION, { detail: { tipo: 'cambiar-password' } }));
+    }
+    throw new ApiError(detail, response.status, accion);
   }
 
   return response.json();
+}
+
+// ------------------------------------------------------------
+// Autenticación
+// ------------------------------------------------------------
+
+export const auth = {
+  me: () => request(`${API_PREFIX}/auth/me`),
+  renovar: renovarSesion,
+  login: (email, password) => request(`${API_PREFIX}/auth/login`, { method: 'POST', body: { email, password } }),
+  registro: (nombre, email, password) => request(`${API_PREFIX}/auth/registro`, { method: 'POST', body: { nombre, email, password } }),
+  logout: () => request(`${API_PREFIX}/auth/logout`, { method: 'POST' }),
+  cambiarPassword: (passwordActual, passwordNueva) => request(`${API_PREFIX}/auth/cambiar-password`, {
+    method: 'POST',
+    body: { password_actual: passwordActual, password_nueva: passwordNueva },
+  }),
+  solicitarInvestigador: (institucion, motivo) => request(`${API_PREFIX}/auth/solicitar-investigador`, {
+    method: 'POST',
+    body: { institucion, motivo },
+  }),
+};
+
+// ------------------------------------------------------------
+// Administración
+// ------------------------------------------------------------
+
+export const admin = {
+  usuarios: (filtros = {}) => {
+    const params = new URLSearchParams(Object.entries(filtros).filter(([, v]) => v));
+    const query = params.toString() ? `?${params}` : '';
+    return request(`${API_PREFIX}/admin/usuarios${query}`);
+  },
+  actualizar: (id, cambios) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}`, { method: 'PATCH', body: cambios }),
+  decidirSolicitud: (id, decision, comentario) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/solicitud`, {
+    method: 'POST',
+    body: { decision, comentario: comentario || null },
+  }),
+  restablecerPassword: (id) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/restablecer-password`, { method: 'POST' }),
+  auditoria: (soloFallidos = false) => request(`${API_PREFIX}/admin/auditoria?limite=200${soloFallidos ? '&solo_fallidos=true' : ''}`),
+};
+
+export function getEstadisticas() {
+  return request(`${API_PREFIX}/estadisticas`);
 }
 
 export function getFechas() {

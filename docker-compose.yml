@@ -41,8 +41,13 @@ services:
       MONGO_COLLECTION: observaciones_noaa
       MONGO_APP_USERNAME: ${MONGO_APP_USERNAME}
       MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173}
       ENABLE_DOCS: ${ENABLE_DOCS:-false}
+      # Autenticación
+      JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en .env}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ACCESS_TOKEN_MINUTOS: ${ACCESS_TOKEN_MINUTOS:-15}
+      REFRESH_TOKEN_DIAS: ${REFRESH_TOKEN_DIAS:-7}
     depends_on:
       mongodb:
         condition: service_healthy

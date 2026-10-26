@@ -9,7 +9,16 @@ import ViewExplorador from './views/ViewExplorador';
 import ViewDetalle from './views/ViewDetalle';
 import ViewResumen from './views/ViewResumen';
 import ViewMetodologia from './views/ViewMetodologia';
-import { getAreas, getFechas, getGeoJSON, normalizeArea } from './data/api';
+import ViewAcceso from './views/ViewAcceso';
+import ViewCuenta, { CambioPasswordObligatorio } from './views/ViewCuenta';
+import ViewAdmin from './views/ViewAdmin';
+import AccesoRestringido from './components/AccesoRestringido';
+import { useAuth, ROLES } from './auth/AuthContext';
+import { admin as apiAdmin, getAreas, getEstadisticas, getFechas, getGeoJSON, normalizeArea } from './data/api';
+import './styles/cuentas.css';
+
+// Secciones que requieren una cuenta de investigador aprobada (o admin).
+const VISTAS_DATOS = new Set(['explorador', 'resumen']);
 
 class ViewErrorBoundary extends React.Component {
   constructor(props) {
@@ -37,6 +46,7 @@ class ViewErrorBoundary extends React.Component {
 }
 
 export default function App() {
+  const { usuario, cargando: cargandoSesion, autenticado, puedeVerDatos, esAdmin, logout } = useAuth();
   const [view, setView] = useState('inicio');
   const [selectedArea, setSelectedArea] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -44,10 +54,27 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [areas, setAreas] = useState([]);
   const [geojson, setGeojson] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [estadisticas, setEstadisticas] = useState(null);
+  const [pendientes, setPendientes] = useState(0);
+
+  // Cifras públicas para la página de inicio (sin datos ambientales).
+  useEffect(() => {
+    getEstadisticas().then(setEstadisticas).catch(() => setEstadisticas(null));
+  }, []);
+
+  // Los datos ambientales solo se piden si el rol lo permite y la cuenta no
+  // tiene una contraseña temporal pendiente; si el usuario cierra sesión o
+  // pierde el permiso, se borran de la memoria.
+  const datosHabilitados = puedeVerDatos && !usuario?.debe_cambiar_password;
+  const usuarioId = usuario?.id || null;
 
   useEffect(() => {
+    if (!datosHabilitados) {
+      setDates([]); setSelectedDate(null); setAreas([]); setGeojson(null); setSelectedArea(null); setError('');
+      return undefined;
+    }
     let cancelled = false;
     async function loadInitialData() {
       try {
@@ -66,10 +93,10 @@ export default function App() {
     }
     loadInitialData();
     return () => { cancelled = true; };
-  }, []);
+  }, [datosHabilitados, usuarioId]);
 
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!selectedDate || !datosHabilitados) return undefined;
     let cancelled = false;
     async function loadAreas() {
       try {
@@ -85,7 +112,20 @@ export default function App() {
     }
     loadAreas();
     return () => { cancelled = true; };
-  }, [selectedDate, geojson]);
+  }, [selectedDate, geojson, datosHabilitados]);
+
+  // Contador de solicitudes pendientes para el administrador.
+  useEffect(() => {
+    if (!esAdmin) { setPendientes(0); return; }
+    apiAdmin.usuarios({ solicitud: 'pendiente' }).then((r) => setPendientes(r.pendientes)).catch(() => {});
+  }, [esAdmin]);
+
+  // Al cerrar sesión, salir de las vistas privadas.
+  useEffect(() => {
+    if (cargandoSesion) return;
+    if (!autenticado && (view === 'cuenta' || view === 'admin')) setView('inicio');
+    if (!esAdmin && view === 'admin') setView('inicio');
+  }, [autenticado, esAdmin, cargandoSesion, view]);
 
   const featureByFid = useMemo(
     () => new Map((geojson?.features || []).map((feature) => [Number(feature.properties.FID), feature])),
@@ -108,30 +148,93 @@ export default function App() {
     explorador: 'Explorador Térmico',
     resumen: 'Resumen del Territorio',
     metodologia: 'Metodología',
+    acceso: 'Iniciar sesión',
+    registro: 'Crear cuenta',
+    cuenta: 'Mi cuenta',
+    admin: 'Administración',
   };
 
-  if (loading) {
+  function alAcceder(u, modo) {
+    if (u?.rol === 'investigador' || u?.rol === 'admin') setView(view === 'acceso' || view === 'registro' ? 'explorador' : view);
+    else setView(modo === 'registro' ? 'cuenta' : 'inicio');
+  }
+
+  async function cerrarSesion() {
+    await logout();
+    setView('inicio');
+  }
+
+  function renderVista() {
+    if (VISTAS_DATOS.has(view) && !puedeVerDatos) {
+      return <AccesoRestringido seccion={VIEW_TITLES[view]} onNavigate={navigate} />;
+    }
+    if (VISTAS_DATOS.has(view) && loading) {
+      return <LoadingState message="Cargando el territorio..." />;
+    }
+    if (VISTAS_DATOS.has(view) && error && !dates.length) {
+      return <ErrorState message={error} />;
+    }
+    switch (view) {
+      case 'inicio':
+        return <ViewInicio onNavigate={navigate} areasCount={estadisticas?.total_areas || 47} pixelCount={estadisticas?.total_pixeles || 20} datesCount={estadisticas?.total_fechas || dates.length} selectedDate={selectedDate} />;
+      case 'corales':
+        return <ViewErrorBoundary><ViewCorales /></ViewErrorBoundary>;
+      case 'estres':
+        return <ViewEstres />;
+      case 'indicadores':
+        return <ViewIndicadores />;
+      case 'explorador':
+        return (
+          <ViewErrorBoundary>
+          <ViewExplorador
+            areas={areas}
+            dates={dates}
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            geojson={geojson}
+            selectedArea={selectedArea}
+            onSelectArea={handleSelectArea}
+          />
+          </ViewErrorBoundary>
+        );
+      case 'resumen':
+        return <ViewErrorBoundary><ViewResumen areas={areas} totalDates={dates.length} /></ViewErrorBoundary>;
+      case 'metodologia':
+        return <ViewMetodologia />;
+      case 'acceso':
+      case 'registro':
+        return autenticado
+          ? <ViewCuenta />
+          : <ViewAcceso key={view} modoInicial={view === 'registro' ? 'registro' : 'login'} onExito={alAcceder} />;
+      case 'cuenta':
+        return autenticado ? <ViewCuenta /> : null;
+      case 'admin':
+        return esAdmin ? <ViewErrorBoundary><ViewAdmin onPendientes={setPendientes} /></ViewErrorBoundary> : null;
+      default:
+        return null;
+    }
+  }
+
+  if (cargandoSesion) {
     return (
-      <div className="h-screen flex items-center justify-center" style={{ background: '#eef8f7' }}>
-        <LoadingState message="Conectando con el backend y cargando el territorio..." />
+      <div className="h-screen flex items-center justify-center" style={{ background: 'var(--ocean-900)' }}>
+        <LoadingState message="Cargando Coraleum..." />
       </div>
     );
   }
 
-  if (error && !dates.length) {
+  // Contraseña temporal: nada más está disponible hasta cambiarla.
+  if (usuario?.debe_cambiar_password) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center px-8" style={{ background: '#eef8f7' }}>
-        <ErrorState message={error} />
-        <p className="text-xs mt-2 font-mono" style={{ color: 'rgba(57,91,101,0.68)' }}>
-          Verifica que Docker tenga activos MongoDB y FastAPI y que el frontend pueda acceder a /api.
-        </p>
+      <div style={{ height: '100dvh', background: 'linear-gradient(145deg, #0f303a 0%, #123b45 100%)' }}>
+        <CambioPasswordObligatorio />
       </div>
     );
   }
 
   return (
     <div className="flex" style={{ height: '100dvh', width: '100vw', overflow: 'hidden', background: '#eef8f7' }}>
-      <Sidebar active={view} onNavigate={navigate} collapsed={collapsed} />
+      <Sidebar active={view} onNavigate={navigate} collapsed={collapsed} autenticado={autenticado} puedeVerDatos={puedeVerDatos} esAdmin={esAdmin} pendientes={pendientes} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header
@@ -158,13 +261,26 @@ export default function App() {
 
           <div className="flex-1" />
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
-            <span className="text-xs font-mono" style={{ color: 'rgba(10,143,139,0.70)' }}>{areas.length || '—'} áreas · {dates.length} fechas</span>
-            <div className="header-date"><span>▣</span>{selectedDate ? selectedDate.replace('T', ' ').slice(0, 16) : '—'}</div>
+            {puedeVerDatos && (
+              <>
+                <div className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                <span className="text-xs font-mono hidden md:inline" style={{ color: 'rgba(10,143,139,0.70)' }}>{areas.length || '—'} áreas · {dates.length} fechas</span>
+                <div className="header-date hidden md:flex"><span>▣</span>{selectedDate ? selectedDate.replace('T', ' ').slice(0, 16) : '—'}</div>
+              </>
+            )}
+            {autenticado ? (
+              <div className="sesion-chip">
+                <span className="nombre" title={usuario.email}>{usuario.nombre}</span>
+                <span className={`badge badge-${usuario.rol}`}>{ROLES[usuario.rol] || usuario.rol}</span>
+                <button type="button" onClick={cerrarSesion}>Salir</button>
+              </div>
+            ) : (
+              <button type="button" className="btn-entrar" onClick={() => navigate('acceso')}>Iniciar sesión</button>
+            )}
           </div>
         </header>
 
-        {error && (
+        {error && puedeVerDatos && VISTAS_DATOS.has(view) && dates.length > 0 && (
           <div className="shrink-0 px-5 py-1.5 text-xs font-mono" style={{ background: 'rgba(255,107,71,0.08)', color: '#ff9b6b', borderBottom: '1px solid rgba(255,107,71,0.15)' }}>
             {error}
           </div>
@@ -175,23 +291,7 @@ export default function App() {
           style={{ background: 'linear-gradient(145deg, #eef8f7 0%, #e8f3f2 58%, #f6faf9 100%)' }}
           key={view}
         >
-          {view === 'inicio' && <ViewInicio onNavigate={navigate} areasCount={areas.length || 47} pixelCount={20} datesCount={dates.length} selectedDate={selectedDate} />}
-          {view === 'corales' && <ViewErrorBoundary><ViewCorales /></ViewErrorBoundary>}
-          {view === 'estres' && <ViewEstres />}
-          {view === 'indicadores' && <ViewIndicadores />}
-          {view === 'explorador' && (
-            <ViewExplorador
-              areas={areas}
-              dates={dates}
-              selectedDate={selectedDate}
-              onDateChange={setSelectedDate}
-              geojson={geojson}
-              selectedArea={selectedArea}
-              onSelectArea={handleSelectArea}
-            />
-          )}
-          {view === 'resumen' && <ViewResumen areas={areas} totalDates={dates.length} />}
-          {view === 'metodologia' && <ViewMetodologia />}
+          {renderVista()}
         </main>
       </div>
     </div>

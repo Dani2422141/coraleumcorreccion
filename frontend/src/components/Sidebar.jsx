@@ -32,7 +32,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    id: 'explorador', label: 'Explorador Térmico', group: 'EXPLORAR',
+    id: 'explorador', label: 'Explorador Térmico', group: 'EXPLORAR', protegido: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -40,7 +40,7 @@ const NAV_ITEMS = [
     ),
   },
   {
-    id: 'resumen', label: 'Resumen',
+    id: 'resumen', label: 'Resumen', protegido: true,
     icon: (
       <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
@@ -59,8 +59,40 @@ const NAV_ITEMS = [
 ];
 
 
-export default function Sidebar({ active, onNavigate, collapsed }) {
+const ITEM_CUENTA = {
+  id: 'cuenta', label: 'Mi cuenta', group: 'CUENTA',
+  icon: (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM3.5 17.5a6.5 6.5 0 0113 0" />
+    </svg>
+  ),
+};
+
+const ITEM_ADMIN = {
+  id: 'admin', label: 'Administración', group: 'CUENTA',
+  icon: (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 2.5l6 2.5v4.5c0 4-2.6 6.9-6 8-3.4-1.1-6-4-6-8V5l6-2.5zM7.5 10l1.8 1.8 3.4-3.6" />
+    </svg>
+  ),
+};
+
+const ITEM_ACCESO = {
+  id: 'acceso', label: 'Iniciar sesión', group: 'CUENTA',
+  icon: (
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 3h4a2 2 0 012 2v10a2 2 0 01-2 2h-4M8 14l4-4-4-4M12 10H3" />
+    </svg>
+  ),
+};
+
+export default function Sidebar({ active, onNavigate, collapsed, autenticado = false, puedeVerDatos = false, esAdmin = false, pendientes = 0 }) {
   let lastGroup = '';
+  const items = [
+    ...NAV_ITEMS,
+    ...(autenticado ? [ITEM_CUENTA] : [ITEM_ACCESO]),
+    ...(esAdmin ? [ITEM_ADMIN] : []),
+  ];
 
   return (
     <aside
@@ -95,10 +127,11 @@ export default function Sidebar({ active, onNavigate, collapsed }) {
 
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto py-3 px-2">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const showGroup = !collapsed && item.group && item.group !== lastGroup;
           if (item.group) lastGroup = item.group;
-          const isActive = active === item.id;
+          const isActive = active === item.id || (item.id === 'acceso' && active === 'registro');
+          const bloqueado = item.protegido && !puedeVerDatos;
 
           return (
             <div key={item.id}>
@@ -112,7 +145,7 @@ export default function Sidebar({ active, onNavigate, collapsed }) {
               )}
               <button
                 onClick={() => onNavigate(item.id)}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? item.label : bloqueado ? 'Requiere cuenta de investigador' : undefined}
                 className={`nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl mb-0.5 transition-all duration-200 text-left ${isActive ? 'nav-item-active' : ''}`}
                 style={{ color: isActive ? '#67e8dc' : undefined }}
                 onMouseEnter={(e) => { e.currentTarget.classList.add('nav-item-hover'); }}
@@ -122,7 +155,9 @@ export default function Sidebar({ active, onNavigate, collapsed }) {
                 {!collapsed && (
                   <span className="text-xs font-medium leading-tight truncate">{item.label}</span>
                 )}
-                {!collapsed && isActive && (
+                {!collapsed && bloqueado && <span className="nav-candado" aria-label="Requiere acceso de investigador">🔒</span>}
+                {!collapsed && item.id === 'admin' && pendientes > 0 && <span className="nav-contador" aria-label={`${pendientes} solicitudes pendientes`}>{pendientes}</span>}
+                {!collapsed && isActive && !bloqueado && !(item.id === 'admin' && pendientes > 0) && (
                   <div className="ml-auto w-1 h-1 rounded-full shrink-0" style={{ background: '#0aa6a0' }} />
                 )}
               </button>

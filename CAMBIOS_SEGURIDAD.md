@@ -46,3 +46,40 @@ y 2.6 (Pruebas) del documento.
 - `verificar_integridad.py --check` confirma el histórico reparado y detecta la alteración de un solo valor.
 - `migrar_csv_mongodb.py` carga 700 documentos numéricos y rechaza el CSV corrupto original.
 - `npm run build` compila el frontend sin errores.
+
+## Autenticación y roles (nuevo)
+
+| Control | Implementación |
+|---|---|
+| Almacenamiento de contraseñas | Argon2id (`argon2-cffi`), rehash automático si cambian los parámetros |
+| Política de contraseñas | Mínimo 10 caracteres, máximo 128, rechazo de comunes y de las que contienen el correo o el nombre (NIST SP 800-63B) |
+| Sesión | JWT HS256 de 15 min + refresh token opaco de 7 días; ambos en cookies HttpOnly, SameSite=Strict (`Secure` con HTTPS) |
+| Rotación de sesión | Cada renovación invalida el refresh token anterior; reutilizarlo revoca toda la familia (detección de robo) |
+| Revocación | `token_version` por usuario: cambio de contraseña, restablecimiento o desactivación cierran todas las sesiones |
+| CSRF | Encabezado obligatorio `X-Requested-With` + validación de `Origin` + SameSite=Strict |
+| Fuerza bruta | Bloqueo 15 min tras 5 fallos; límite por IP (login 10/5 min, registro 5/h) |
+| Enumeración de cuentas | Mismo mensaje y tiempo de respuesta para correo inexistente y contraseña incorrecta |
+| Autorización | Dependencias de FastAPI por rol en el backend; rol leído de la BD en cada petición |
+| Mínimo privilegio | Registro solo crea "usuario"; investigador requiere aprobación; no se puede auto-asignar rol (campos extra rechazados) |
+| Protección del administrador | No puede quitarse su rol ni desactivarse; siempre queda al menos un admin activo |
+| Auditoría | `auditoria_accesos`: registros, inicios de sesión (exitosos y fallidos), bloqueos, cambios de rol, solicitudes, restablecimientos, accesos denegados. Sin contraseñas ni tokens. Caduca a los 180 días |
+| Validación de entradas | Modelos Pydantic estrictos (`extra=forbid`), `EmailStr`, longitudes máximas; búsqueda con `re.escape` (sin inyección de regex) |
+
+### Propuesta de requisitos para el documento (sección 2.2)
+
+| Código | Requisito |
+|---|---|
+| RF14 | El sistema debe permitir el registro de usuarios con nombre, correo y contraseña. |
+| RF15 | El sistema debe permitir iniciar y cerrar sesión. |
+| RF16 | El sistema debe permitir a un usuario registrado solicitar acceso como investigador indicando institución y motivo. |
+| RF17 | El sistema debe permitir al administrador aprobar o rechazar solicitudes, cambiar roles, activar o desactivar cuentas y restablecer contraseñas. |
+| RF18 | El sistema debe restringir el Explorador Térmico, el detalle por área y el histórico a los roles investigador y administrador. |
+| RF19 | El sistema debe permitir al administrador consultar el registro de auditoría de accesos. |
+| RS09 | Las contraseñas deben almacenarse con una función de derivación resistente (Argon2id). |
+| RS10 | Las sesiones deben gestionarse con cookies HttpOnly y SameSite, con expiración y revocación. |
+| RS11 | La autorización debe validarse en el backend según el rol en cada petición. |
+| RS12 | El sistema debe limitar los intentos de inicio de sesión y bloquear temporalmente la cuenta. |
+| RS13 | El sistema debe proteger las operaciones que modifican datos contra CSRF. |
+| RS14 | El sistema debe registrar los eventos de seguridad sin almacenar secretos. |
+
+Pruebas: `tests/test_auth.py` (28 casos) verifica cada uno de estos controles.
