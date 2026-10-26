@@ -1,0 +1,202 @@
+# Coraleum — Explorador de Estrés Térmico en Corales
+
+Aplicación para consultar datos NOAA Coral Reef Watch asociados a las 47 áreas coralinas del PNN Corales del Rosario y de San Bernardo.
+
+## Arquitectura actual
+
+```text
+                  NOAA / datos históricos
+                           │
+                           ▼
+                       MongoDB
+                    (contenedor Docker)
+                           │
+                           ▼
+                    FastAPI / Python
+                       puerto 8000
+                           │
+                           ▼
+                 Nginx + React / Vite
+                       puerto 3000
+```
+
+El frontend ya no contiene datos térmicos de prueba. Consulta la API y la API consulta MongoDB.
+
+La geometría del mapa proviene de `datos/areas_coralinas_pnn.geojson`, por lo que los polígonos se dibujan con la forma geográfica real del archivo, en lugar de usar puntos `mapX/mapY` inventados.
+
+> El GeoJSON incluido solamente tiene `FID` y `ETIQUETA`; por eso la interfaz identifica las áreas mediante su FID. No se inventaron nombres de áreas que no existan en los datos fuente.
+
+## Cambios principales
+
+- Frontend convertido de TypeScript/TSX a JavaScript/JSX.
+- React + Vite mantenidos como stack del frontend.
+- Datos térmicos obtenidos desde MongoDB mediante FastAPI.
+- Fechas disponibles obtenidas desde `/api/fechas`.
+- Áreas obtenidas desde `/api/areas?fecha=...`.
+- Histórico obtenido desde `/api/areas/{fid}/historico`.
+- Resumen territorial obtenido desde `/api/resumen`.
+- GeoJSON obtenido desde `/api/geojson`.
+- Mapa SVG basado en los polígonos reales del GeoJSON.
+- Backend dockerizado y conectado al servicio MongoDB mediante el hostname `mongodb` de Docker Compose.
+- Frontend Nginx configurado para hacer proxy de `/api/*` hacia FastAPI.
+- En desarrollo con Vite, `/api/*` se proxifica a `http://localhost:8000`.
+
+## 1. Configurar variables de entorno
+
+Copia `.env.example` como `.env` y reemplaza **todos** los valores:
+
+```env
+MONGO_INITDB_ROOT_USERNAME=admin_coraleum      # administrador (solo scripts)
+MONGO_INITDB_ROOT_PASSWORD=clave_larga_1
+MONGO_APP_USERNAME=coraleum_api                # usuario que usa la API
+MONGO_APP_PASSWORD=clave_larga_2
+MONGO_DATABASE=proyecto_noaa
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+ENABLE_DOCS=false
+```
+
+Para generar claves seguras:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(24))"
+```
+
+No subas `.env` al repositorio (está en `.gitignore`).
+
+La primera vez que MongoDB arranca con el volumen vacío ejecuta
+`mongo-init/01-crear-usuario-app.js`, que crea el usuario de la aplicación con
+permisos `readWrite` **solo** sobre `proyecto_noaa`. La API nunca usa el usuario
+administrador.
+
+## 2. Levantar todo con Docker
+
+Desde la raíz del proyecto:
+
+```bash
+docker compose up -d --build
+```
+
+Esto levanta:
+
+| Servicio | Puerto | Uso |
+|---|---|---|
+| `mongodb` | `127.0.0.1:27017` (solo este equipo) | Base de datos, con autenticación |
+| `backend` | no publicado | FastAPI, accesible solo por Nginx en `/api` |
+| `frontend` | `3000` | React servido por Nginx |
+
+Abre:
+
+```text
+http://localhost:3000
+```
+
+Comprobación de salud de la API (a través de Nginx):
+
+```text
+http://localhost:3000/api/health
+```
+
+La documentación interactiva (`/docs`) está desactivada por defecto. Para usarla
+en desarrollo pon `ENABLE_DOCS=true` en `.env`, descomenta el bloque `ports` del
+servicio `backend` en `docker-compose.yml` y abre `http://localhost:8000/docs`.
+
+## 3. Conexión frontend → backend cuando ambos están dockerizados
+
+El navegador entra a `http://localhost:3000`.
+
+El frontend solicita, por ejemplo:
+
+```text
+/api/areas?fecha=2026-09-03%2012:00:00
+```
+
+Nginx recibe esa solicitud y la reenvía internamente a:
+
+```text
+http://backend:8000/areas?fecha=2026-09-03%2012:00:00
+```
+
+`backend` es el nombre del servicio Docker y funciona porque ambos servicios están en la misma red creada por Docker Compose.
+
+Esto evita poner `localhost:8000` dentro del código del navegador cuando el frontend está dentro de Docker.
+
+## 4. Desarrollo del frontend fuera de Docker
+
+Primero descomenta el bloque `ports` del servicio `backend` en `docker-compose.yml` (publica la API solo en `127.0.0.1:8000`). Luego levanta solamente MongoDB + backend:
+
+```bash
+docker compose up -d mongodb backend
+```
+
+Luego, dentro de `frontend/`:
+
+```bash
+npm install
+npm run dev
+```
+
+Vite escucha en `http://localhost:5173` y tiene configurado un proxy:
+
+```text
+/api/* → http://localhost:8000/*
+```
+
+Por lo tanto el código React sigue usando `/api/...` y no necesitas cambiar URLs entre desarrollo y producción.
+
+## 5. Cargar los datos en MongoDB
+
+Con MongoDB levantado y el entorno virtual de Python activo, desde la raíz del proyecto:
+
+```bash
+python scripts/verificar_integridad.py --check   # el histórico no fue alterado
+python scripts/migrar_csv_mongodb.py              # 700 observaciones
+python scripts/migrar_pixeles_mongodb.py          # 20 píxeles
+python scripts/registrar_integridad_mongodb.py    # registro SHA-256 en auditoria_integridad
+```
+
+Los scripts usan el usuario administrador del `.env` y se conectan a
+`localhost:27017`, que Docker publica solo para este equipo.
+
+El hash SHA-256 se calcula con los saltos de línea normalizados, así que la
+verificación da el mismo resultado en Windows, Linux, Mac y Docker.
+
+Si alguna vez el histórico vuelve a tener valores no numéricos en `sst`, `ssta`,
+`hotspot` o `dhw`, `migrar_csv_mongodb.py` se detiene y pide ejecutar
+`python scripts/reparar_historico.py` (diagnóstico) y luego
+`python scripts/reparar_historico.py --aplicar`.
+
+Si el script se ejecutara dentro de un contenedor, en cambio, debe usar `mongodb:27017`, no `localhost:27017`.
+
+## 6. Endpoints usados por React
+
+### `GET /fechas`
+
+Devuelve las fechas existentes en MongoDB.
+
+### `GET /areas?fecha=YYYY-MM-DD HH:MM:SS`
+
+Devuelve el estado térmico de las áreas para una fecha concreta.
+
+### `GET /areas/{fid}?fecha=YYYY-MM-DD HH:MM:SS`
+
+Devuelve la información de un área para la fecha indicada (o la más reciente si se omite).
+
+### `GET /areas/{fid}/historico`
+
+Devuelve la serie histórica de esa área.
+
+### `GET /resumen`
+
+Calcula los KPIs territoriales directamente a partir de MongoDB.
+
+### `GET /geojson`
+
+Devuelve la geometría real de las 47 áreas coralinas.
+
+### `GET /health`
+
+Comprueba la conexión con MongoDB.
+
+## Nota sobre la clasificación
+
+`Baja`, `Intermedia` y `Alta` siguen siendo la clasificación relativa que ya utilizaba el backend. No representan categorías oficiales de alerta de NOAA.

@@ -1,0 +1,5 @@
+# Dependencias mínimas de la API (la imagen no necesita pandas/scipy).
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+pymongo==4.17.0
+python-dotenv==1.2.3

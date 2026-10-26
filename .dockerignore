@@ -1,0 +1,12 @@
+# El backend se construye desde la raíz del proyecto: excluir lo innecesario.
+.git
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+.venv
+frontend
+resultados
+scripts
+mongo-init
+*.md

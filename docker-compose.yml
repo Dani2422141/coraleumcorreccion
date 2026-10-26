@@ -1,0 +1,67 @@
+services:
+  mongodb:
+    # Versión fija: evita que una actualización automática de "latest"
+    # cambie el motor de base de datos sin que el equipo lo note.
+    image: mongo:8.0
+    container_name: proyecto-noaa-mongodb
+    restart: unless-stopped
+    environment:
+      # Usuario administrador (solo para scripts de carga/mantenimiento).
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:?Defina MONGO_INITDB_ROOT_USERNAME en .env}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:?Defina MONGO_INITDB_ROOT_PASSWORD en .env}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-proyecto_noaa}
+      # Usuario de la aplicación (solo lectura/escritura sobre proyecto_noaa).
+      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME:?Defina MONGO_APP_USERNAME en .env}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?Defina MONGO_APP_PASSWORD en .env}
+      MONGO_DATABASE: ${MONGO_DATABASE:-proyecto_noaa}
+    ports:
+      # Solo accesible desde el propio equipo (para los scripts de /scripts).
+      # Nunca publicar 27017 hacia la red.
+      - "127.0.0.1:27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  backend:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: proyecto-noaa-backend
+    restart: unless-stopped
+    environment:
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_DATABASE: ${MONGO_DATABASE:-proyecto_noaa}
+      MONGO_COLLECTION: observaciones_noaa
+      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173}
+      ENABLE_DOCS: ${ENABLE_DOCS:-false}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    # Sin "ports": el backend solo es accesible a través de Nginx (/api).
+    # Para usar /docs en desarrollo (o correr el frontend con "npm run dev"),
+    # descomente las dos líneas siguientes y ponga ENABLE_DOCS=true en .env:
+    # ports:
+    #   - "127.0.0.1:8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: proyecto-noaa-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  mongodb_data:

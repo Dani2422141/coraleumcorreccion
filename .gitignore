@@ -1,0 +1,34 @@
+# --- Secretos ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- Node / Vite ---
+node_modules/
+dist/
+build/
+.cache/
+.vite/
+vite.config.*.timestamp-*
+*.tsbuildinfo
+
+# --- Logs ---
+*-debug.log*
+logs/
+*.log
+
+# --- Respaldos y archivos temporales de datos ---
+resultados/observaciones_noaa_historico_backup.csv
+resultados/observaciones_noaa_2026-*.csv
+
+# --- Herramientas ---
+.claude-replay.*
+.tmp-*
+/.plugins/
+/.opencode-skills/
