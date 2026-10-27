@@ -1,8 +1,8 @@
 """Rutas de consulta de datos ambientales (fechas, áreas, histórico, resumen).
 
-Requieren una cuenta de investigador aprobada o de administrador: la
-protección se aplica en el backend con la dependencia del router, por lo
-que no basta con ocultar los botones en la interfaz.
+Cada ruta exige un permiso (`datos.consultar` o `datos.historico`): la
+protección se aplica en el backend, por lo que no basta con ocultar los
+botones en la interfaz.
 """
 
 import ast
@@ -14,18 +14,17 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api import config
 from api.db import observaciones as coleccion
-from api.deps import requerir_roles
+from api.deps import requerir_permiso
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ARCHIVO_PIXELES = BASE_DIR / "datos" / "pixeles_noaa_unicos_para_automatizacion.csv"
 ARCHIVO_GEOJSON = BASE_DIR / "datos" / "areas_coralinas_pnn.geojson"
 
-router = APIRouter(
-    tags=["datos"],
-    dependencies=[Depends(requerir_roles(*config.ROLES_DATOS))],
-)
+router = APIRouter(tags=["datos"], dependencies=[Depends(requerir_permiso("datos.consultar", "datos.historico"))])
+
+CONSULTAR = Depends(requerir_permiso("datos.consultar"))
+HISTORICO = Depends(requerir_permiso("datos.historico"))
 
 # Solo cifras agregadas (sin valores ambientales): las usa la página de
 # inicio, que es pública.
@@ -168,6 +167,7 @@ FechaQuery = Query(
 
 @router.get("/fechas")
 def fechas_disponibles():
+    # Las fechas las usan tanto el Explorador como el histórico.
     fechas = [formatear_fecha(fecha) for fecha in obtener_fechas()]
     return {
         "total_fechas": len(fechas),
@@ -182,7 +182,7 @@ def geojson():
     return GEOJSON
 
 
-@router.get("/resumen")
+@router.get("/resumen", dependencies=[CONSULTAR])
 def resumen():
     fechas = obtener_fechas()
     areas_actuales = obtener_areas_por_fecha(fechas[-1] if fechas else None)
@@ -217,7 +217,7 @@ def resumen():
     }
 
 
-@router.get("/areas")
+@router.get("/areas", dependencies=[CONSULTAR])
 def areas(fecha: str | None = FechaQuery):
     fecha_datetime = resolver_fecha(fecha)
     resultados = obtener_areas_por_fecha(fecha_datetime)
@@ -228,7 +228,7 @@ def areas(fecha: str | None = FechaQuery):
     }
 
 
-@router.get("/areas/{fid}")
+@router.get("/areas/{fid}", dependencies=[CONSULTAR])
 def area(fid: int, fecha: str | None = FechaQuery):
     """Detalle de un área para la fecha seleccionada (o la más reciente)."""
     validar_fid(fid)
@@ -243,7 +243,7 @@ def area(fid: int, fecha: str | None = FechaQuery):
     return resumir_area(fid, registros, fecha_datetime)
 
 
-@router.get("/areas/{fid}/historico")
+@router.get("/areas/{fid}/historico", dependencies=[HISTORICO])
 def historico_area(fid: int):
     """Serie histórica del área en UNA sola consulta a MongoDB."""
     validar_fid(fid)

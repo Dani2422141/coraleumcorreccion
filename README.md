@@ -54,10 +54,16 @@ MONGO_DATABASE=proyecto_noaa
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173
 ENABLE_DOCS=false
 JWT_SECRET=clave_larga_3                       # firma de las sesiones (mín. 32 caracteres)
+CLAVE_CIFRADO_DATOS=clave_larga_4              # cifra los datos personales (mín. 32, distinta)
 COOKIE_SECURE=false                            # true solo con HTTPS
+SESIONES_SIMULTANEAS=1                         # navegadores a la vez por cuenta (1-5)
 ```
 
-Para generar claves seguras (para `JWT_SECRET` usa 48 en lugar de 24):
+> **`CLAVE_CIFRADO_DATOS` no se puede cambiar ni perder**: con ella se cifran el correo,
+> el nombre y las IP guardados en MongoDB. Guárdenla también en el gestor de contraseñas
+> del equipo. Las copias de seguridad sin esta clave no sirven para recuperar esos datos.
+
+Para generar claves seguras (para `JWT_SECRET` y `CLAVE_CIFRADO_DATOS` usa 48 en lugar de 24):
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(24))"
@@ -215,15 +221,50 @@ Las rutas de datos (`/fechas`, `/areas`, `/areas/{fid}`, `/areas/{fid}/historico
 
 ## 7. Usuarios, roles e inicio de sesión
 
-| Rol | Cómo se obtiene | Acceso |
-|---|---|---|
-| Visitante | Sin cuenta | Inicio, Conoce los Corales, Estrés Térmico, Indicadores NOAA, Metodología, asistente Coral |
-| Usuario | Registro abierto en la aplicación | Lo anterior + solicitar acceso de investigador |
-| Investigador | Lo aprueba un administrador | + Explorador Térmico (mapa, fechas, detalle, histórico) y Resumen |
-| Administrador | Por consola (abajo) | Todo + gestión de usuarios, solicitudes y auditoría |
+El acceso se controla con **roles configurables** que agrupan **permisos**. Un usuario puede
+tener varios roles: sus permisos son la suma de todos ellos.
 
-La autorización se aplica en el **backend**: sin el rol, la API responde 401/403
-aunque se llame directamente.
+| Permiso | Permite |
+|---|---|
+| `datos.consultar` | Explorador Térmico, detalle por área y Resumen |
+| `datos.historico` | Registro histórico por área |
+| `solicitudes.aprobar` | Aprobar o rechazar solicitudes de investigador |
+| `usuarios.gestionar` | Roles de los usuarios, activación y contraseñas |
+| `roles.gestionar` | Crear, editar y eliminar roles |
+| `auditoria.ver` | Registro de auditoría |
+| `configuracion.gestionar` | Tiempos de sesión |
+
+Roles del sistema: **Usuario** (sin permisos; lo recibe quien se registra), **Investigador**
+(datos) y **Administrador** (todos, no editable). En **Administración → Roles y permisos** se
+crean roles nuevos, y en **Usuarios → Cambiar roles** se asignan.
+
+Protecciones: nadie cambia sus propios roles; solo se asignan roles o permisos que uno mismo
+tiene; siempre queda al menos un administrador; cualquier permiso de administración exige
+verificación en dos pasos.
+
+Los visitantes sin cuenta ven el contenido educativo. La autorización se aplica en el
+**backend**: sin el permiso, la API responde 401/403 aunque se llame directamente.
+
+### Sesiones
+
+En **Administración → Sesión** se configuran, con efecto inmediato:
+
+| Ajuste | Por defecto | Límite |
+|---|---|---|
+| Vigencia del token de acceso | 15 min | 1–60 min |
+| Cierre por inactividad | 30 min | 1–60 min |
+| Duración máxima de la sesión | 12 h | 1–24 h |
+| Sesiones simultáneas por cuenta | 1 | 1–5 |
+
+Los límites siguen NIST SP 800-63B-4 (nivel AAL2). La sesión vive en el servidor: cerrar
+sesión o superar la inactividad invalida el token al instante, aunque no haya vencido.
+
+- Si se inicia sesión en otro navegador y se supera el límite, se cierra la sesión que lleva
+  más tiempo sin usarse; ese navegador muestra el motivo y el nuevo indica qué sesión cerró.
+  En **Mi cuenta → Sesiones abiertas** se ven y se cierran las sesiones de la cuenta.
+- Cerrar sesión en una pestaña cierra al instante las demás pestañas del mismo navegador.
+- Cada sección tiene su dirección (`#/explorador?fecha=…&area=8`); la dirección nunca lleva
+  datos de sesión.
 
 ### Crear el primer administrador
 
@@ -238,18 +279,19 @@ convertir esa cuenta en administrador.
 
 ### Recuperar una contraseña
 
-En **Administración → Usuarios → Restablecer clave** se genera una contraseña
-temporal que se muestra una sola vez. Al iniciar sesión con ella, el usuario
-debe crear una nueva antes de usar la aplicación.
+En el inicio de sesión, **"¿Olvidaste tu contraseña?"** envía una solicitud (la respuesta es
+la misma exista o no el correo). La solicitud aparece en **Administración → Solicitudes**,
+donde se genera una contraseña temporal o se escribe una (con la misma política). Al iniciar
+sesión con ella, el usuario debe crear una nueva antes de usar la aplicación.
 
 ### Medidas de seguridad
 
-- Contraseñas con **Argon2id**; mínimo 10 caracteres y rechazo de contraseñas comunes.
+- Contraseñas con **Argon2id**; mínimo 10 caracteres; se rechazan contraseñas comunes, solo numéricas y secuencias (`123456789101112…`, `abcd…`, `qwerty…`).
 - Sesión en cookies **HttpOnly + SameSite=Strict** (JavaScript no puede leerlas):
-  token de acceso de 15 min y refresh token de 7 días, **rotativo** y guardado
-  como hash. Reutilizar un refresh token ya usado revoca todas las sesiones derivadas.
+  token de acceso corto y refresh token **rotativo** guardado como hash, ligados
+  a una sesión del servidor con cierre por inactividad. Reutilizar un refresh token ya usado revoca todas las sesiones derivadas.
 - Protección **CSRF**: encabezado `X-Requested-With: Coraleum` y verificación de `Origin`.
-- **Bloqueo** de la cuenta 15 min tras 5 intentos fallidos y **límite de peticiones**
+- **Bloqueo** de la cuenta 15 min al 5.º intento fallido y **límite de peticiones**
   por IP en inicio de sesión y registro.
 - El rol se lee de la base de datos en cada petición: los cambios de rol y las
   desactivaciones aplican de inmediato.
@@ -279,6 +321,28 @@ Si alguien pierde el celular y los códigos, otro administrador puede quitarle l
   Si cambian el texto, suban la versión en `POLITICA_VERSION` (`api/config.py`) y en
   `VERSION` (`ViewPrivacidad.jsx`).
 
+### Datos cifrados en la base de datos
+
+El correo, el nombre, las IP, el navegador, los datos de la solicitud y el detalle de la
+auditoría se guardan cifrados (AES con Fernet, `api/cifrado.py`). Para buscar por correo
+se usa un índice ciego (`email_hmac`, HMAC-SHA256). La contraseña se guarda como hash
+Argon2id. Para comprobarlo:
+
+```powershell
+docker compose exec mongodb mongosh -u admin_coraleum -p --authenticationDatabase admin proyecto_noaa --eval "db.usuarios.findOne({}, {nombre:1, email:1, email_hmac:1, password_hash:1, consentimiento:1})"
+```
+
+Al arrancar, la API cifra automáticamente las cuentas creadas con versiones anteriores.
+
+### Carga de archivos y registro de errores
+
+- La solicitud de investigador admite un **soporte en PDF** (máx. 2 MB). El servidor revisa el
+  contenido real (firma `%PDF-`, estructura, sin JavaScript ni archivos incrustados): un `.exe`
+  renombrado a `.pdf` se rechaza y queda en la auditoría. El archivo se guarda cifrado.
+- Los fallos internos (500) y las caídas de MongoDB (503) quedan en **Administración → Errores**,
+  en `logs/errores.log` del contenedor y en `docker compose logs backend`. La persona solo ve un
+  código de referencia. El botón **Simular un fallo del sistema** sirve para probarlo.
+
 ## 9. Copias de seguridad
 
 Con Docker encendido y el entorno virtual activo:
@@ -307,7 +371,7 @@ Docker Desktop debe estar abierto a esa hora. Para quitar la tarea:
 
 ```bash
 pip install -r requirements-dev.txt
-pytest                                   # 48 pruebas; no necesitan Docker
+pytest                                   # 87 pruebas; no necesitan Docker
 pip install pip-audit bandit
 pip-audit -r api/requirements.txt        # vulnerabilidades en librerías de Python
 bandit -r api scripts -ll                # análisis estático del código

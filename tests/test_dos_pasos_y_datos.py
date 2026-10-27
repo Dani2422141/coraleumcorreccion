@@ -23,7 +23,7 @@ def _configurar_2fa(c, password=PASSWORD):
 
 def _crear_admin_sin_2fa(c):
     registrar(c, email="nueva@coraleum.org", nombre="Nueva Admin")
-    db.usuarios.update_one({"email": "nueva@coraleum.org"}, {"$set": {"rol": "admin"}})
+    db.usuarios.update_one({"email": "nueva@coraleum.org"}, {"$set": {"roles": ["admin"]}})
 
 
 # ------------------------------------------------------------

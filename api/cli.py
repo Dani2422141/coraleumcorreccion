@@ -14,7 +14,7 @@ import sys
 from pydantic import TypeAdapter, ValidationError
 from pydantic import EmailStr
 
-from api import config, db
+from api import db, permisos
 from api.seguridad import ahora, hash_password, validar_politica_password
 
 
@@ -39,13 +39,24 @@ def crear_admin():
 
     existente = db.usuarios.find_one({"email": email})
     if existente:
-        respuesta = input(f"Ya existe la cuenta de {existente.get('nombre')} ({existente.get('rol')}). ¿Convertirla en administrador? [s/N]: ")
+        roles_actuales = ", ".join(permisos.claves_de(existente))
+        respuesta = input(f"Ya existe la cuenta de {existente.get('nombre')} ({roles_actuales}). ¿Agregarle el rol de administrador? [s/N]: ")
         if respuesta.strip().lower() not in {"s", "si", "sí"}:
             print("Cancelado.")
             return 1
         db.usuarios.update_one(
             {"_id": existente["_id"]},
-            {"$set": {"rol": config.ROL_ADMIN, "activo": True, "intentos_fallidos": 0, "bloqueado_hasta": None}},
+            {
+                "$set": {
+                    "roles": list(dict.fromkeys(
+                        [c for c in permisos.claves_de(existente) if c != permisos.ROL_USUARIO] + [permisos.ROL_ADMIN]
+                    )),
+                    "activo": True,
+                    "intentos_fallidos": 0,
+                    "bloqueado_hasta": None,
+                },
+                "$unset": {"rol": ""},
+            },
         )
         print(f"✅ {email} ahora es administrador.")
         return 0
@@ -68,7 +79,7 @@ def crear_admin():
             "nombre": nombre,
             "email": email,
             "password_hash": hash_password(password),
-            "rol": config.ROL_ADMIN,
+            "roles": [permisos.ROL_ADMIN],
             "activo": True,
             "debe_cambiar_password": False,
             "token_version": 0,

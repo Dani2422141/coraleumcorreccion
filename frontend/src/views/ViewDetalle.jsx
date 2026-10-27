@@ -116,7 +116,7 @@ export default function ViewDetalle({ area, fecha = null, onGoHistorico, onBack,
           <p className="text-xs" style={{ color: 'rgba(194,231,231,.68)', lineHeight: 1.7 }}>La categoría <strong style={{ color: catColor }}>{detail.classification}</strong> es una clasificación <strong>relativa</strong> al conjunto de áreas analizadas y no corresponde a categorías oficiales de alerta NOAA.</p>
         </div>
 
-        <button onClick={onGoHistorico} className="detail-history-button">Ver evolución histórica →</button>
+        {onGoHistorico && <button onClick={onGoHistorico} className="detail-history-button">Ver evolución histórica →</button>}
       </div>
     </div>
   );

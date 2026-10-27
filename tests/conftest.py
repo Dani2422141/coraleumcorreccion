@@ -22,6 +22,8 @@ sys.path.insert(0, str(RAIZ))
 
 os.environ.setdefault("MONGO_URI", "mongodb://pruebas/proyecto_noaa")
 os.environ.setdefault("JWT_SECRET", "clave-de-pruebas-solo-para-tests-0123456789abcdef")
+os.environ.setdefault("CLAVE_CIFRADO_DATOS", "clave-de-cifrado-solo-para-tests-fedcba9876543210")
+os.environ.setdefault("CARPETA_LOGS", os.path.join(os.path.dirname(__file__), ".logs"))
 os.environ["COOKIE_PATH_PREFIX"] = "/"  # TestClient no pasa por Nginx (/api)
 os.environ["COOKIE_SECURE"] = "false"
 
@@ -32,7 +34,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import pyotp  # noqa: E402
 
-from api import db, dos_pasos, limites  # noqa: E402
+from api import db, dos_pasos, limites, sesion_config  # noqa: E402
 from api.main import app  # noqa: E402
 from api.seguridad import ahora, hash_password  # noqa: E402
 
@@ -79,6 +81,14 @@ def base_limpia():
     db.usuarios.delete_many({})
     db.sesiones.delete_many({})
     db.auditoria_accesos.delete_many({})
+    db.roles.delete_many({})
+    db.configuracion.delete_many({})
+    db.documentos.delete_many({})
+    db.registro_errores.delete_many({})
+    # Las pruebas abren varias sesiones de la misma cuenta; el límite de
+    # sesiones simultáneas (por defecto 1) se prueba aparte.
+    db.configuracion.insert_one({"_id": "sesion", "sesiones_simultaneas": 5})
+    sesion_config.invalidar()
     db.crear_indices()
     _cargar_observaciones()
     limites.reiniciar()
@@ -129,7 +139,7 @@ def admin(crear_cliente):
             "nombre": "Admin Coraleum",
             "email": "admin@coraleum.org",
             "password_hash": hash_password(PASSWORD_ADMIN),
-            "rol": "admin",
+            "roles": ["admin"],
             "activo": True,
             "debe_cambiar_password": False,
             "token_version": 0,

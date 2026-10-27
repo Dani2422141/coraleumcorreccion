@@ -12,7 +12,9 @@ COPY api ./api
 COPY datos ./datos
 
 # Ejecutar sin privilegios de root.
-RUN useradd --system --no-create-home --uid 10001 coraleum
+RUN useradd --system --no-create-home --uid 10001 coraleum \
+    && mkdir -p /app/logs && chown coraleum /app/logs
+ENV CARPETA_LOGS=/app/logs
 USER coraleum
 
 EXPOSE 8000

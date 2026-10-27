@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
+import { auth } from '../data/api';
 import { Campo, CampoPassword, Mensaje, pistaPassword } from '../components/Formulario';
 import { CampoCodigo } from '../components/DosPasos';
 import { PoliticaContenido } from './ViewPrivacidad';
@@ -55,6 +56,48 @@ function SegundoPaso({ desafio, onCancelar, onExito }) {
         <button type="button" className="btn btn-secundario btn-pequeno" onClick={onCancelar}>Cancelar</button>
       </div>
     </form>
+  );
+}
+
+/** "Olvidé mi contraseña": la solicitud llega al administrador. */
+function RecuperarPassword({ onVolver }) {
+  const [email, setEmail] = useState('');
+  const [respuesta, setRespuesta] = useState('');
+  const [error, setError] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  async function enviar(evento) {
+    evento.preventDefault();
+    setError('');
+    setEnviando(true);
+    try {
+      setRespuesta((await auth.olvidePassword(email.trim())).mensaje);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div>
+      {respuesta ? (
+        <Mensaje tipo="ok">{respuesta}</Mensaje>
+      ) : (
+        <form onSubmit={enviar}>
+          <p className="ayuda">
+            Escribe el correo de tu cuenta. Un administrador recibirá la solicitud y te entregará una contraseña temporal
+            por un canal seguro; al iniciar sesión deberás cambiarla.
+          </p>
+          <Mensaje tipo="error">{error}</Mensaje>
+          <Campo etiqueta="Correo electrónico">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" maxLength={254} required autoFocus />
+          </Campo>
+          <button className="btn btn-primario btn-bloque" type="submit" disabled={enviando}>{enviando ? 'Enviando…' : 'Solicitar restablecimiento'}</button>
+        </form>
+      )}
+      <button type="button" className="btn btn-secundario btn-bloque" style={{ marginTop: 10 }} onClick={onVolver}>Volver a iniciar sesión</button>
+    </div>
   );
 }
 
@@ -116,7 +159,7 @@ export default function ViewAcceso({ modoInicial = 'login', onExito }) {
       {verPolitica && <VentanaPolitica onCerrar={() => setVerPolitica(false)} />}
       <div className="cuenta-wrap estrecho">
         <span className="cuenta-kicker">Cuenta Coraleum</span>
-        <h2 className="cuenta-titulo">{desafio ? 'Verificación en dos pasos' : modo === 'login' ? 'Iniciar sesión' : 'Crear una cuenta'}</h2>
+        <h2 className="cuenta-titulo">{desafio ? 'Verificación en dos pasos' : modo === 'recuperar' ? 'Restablecer contraseña' : modo === 'login' ? 'Iniciar sesión' : 'Crear una cuenta'}</h2>
         <p className="cuenta-sub">
           {desafio
             ? 'Tu contraseña es correcta. Falta un último paso para proteger tu cuenta.'
@@ -128,6 +171,8 @@ export default function ViewAcceso({ modoInicial = 'login', onExito }) {
         <div className="cuenta-card">
           {desafio ? (
             <SegundoPaso desafio={desafio} onCancelar={() => cambiarModo('login')} onExito={(u) => onExito?.(u, 'login')} />
+          ) : modo === 'recuperar' ? (
+            <RecuperarPassword onVolver={() => cambiarModo('login')} />
           ) : (
             <>
               <div className="tabs" role="tablist">
@@ -182,7 +227,7 @@ export default function ViewAcceso({ modoInicial = 'login', onExito }) {
 
               {modo === 'login' && (
                 <p className="ayuda" style={{ marginTop: 14, marginBottom: 0, textAlign: 'center' }}>
-                  ¿Olvidaste tu contraseña? Pide al administrador de Coraleum que la restablezca.
+                  <button type="button" className="enlace" onClick={() => cambiarModo('recuperar')}>¿Olvidaste tu contraseña?</button>
                 </p>
               )}
             </>

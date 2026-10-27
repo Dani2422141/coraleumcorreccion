@@ -23,43 +23,68 @@ export const EVENTO_SESION = 'coraleum:sesion';
 
 let renovacionEnCurso = null;
 
-/** Renueva la sesión con el refresh token (cookie HttpOnly). Una sola a la vez. */
+let ultimoMotivoVencimiento = '';
+
+async function pedirRenovacion() {
+  const r = await fetch(`${API_BASE}${API_PREFIX}/auth/refresh`, {
+    method: 'POST',
+    credentials: API_BASE ? 'include' : 'same-origin',
+    headers: { Accept: 'application/json', 'X-Requested-With': 'Coraleum' },
+  });
+  if (r.ok) return true;
+  let datos = {};
+  try { datos = await r.json(); } catch (_) { /* respuesta sin JSON */ }
+  // Otra pestaña renovó la sesión en el mismo instante: la cookie nueva ya está.
+  if (r.status === 409 && datos.accion === 'reintentar') return true;
+  // Motivo del cierre (inactividad, otro navegador…) para mostrarlo en pantalla.
+  ultimoMotivoVencimiento = datos.detail || '';
+  return false;
+}
+
+/**
+ * Renueva la sesión con el refresh token (cookie HttpOnly). Una sola a la vez
+ * en esta pestaña y, con Web Locks, una sola a la vez entre pestañas.
+ */
 function renovarSesion() {
   if (!renovacionEnCurso) {
-    renovacionEnCurso = fetch(`${API_BASE}${API_PREFIX}/auth/refresh`, {
-      method: 'POST',
-      credentials: API_BASE ? 'include' : 'same-origin',
-      headers: { Accept: 'application/json', 'X-Requested-With': 'Coraleum' },
-    })
-      .then((r) => r.ok)
+    const bloqueo = typeof navigator !== 'undefined' && navigator.locks?.request
+      ? navigator.locks.request('coraleum-renovacion', pedirRenovacion)
+      : pedirRenovacion();
+    renovacionEnCurso = Promise.resolve(bloqueo)
       .catch(() => false)
       .finally(() => { renovacionEnCurso = null; });
   }
   return renovacionEnCurso;
 }
 
-async function request(path, { method = 'GET', body, reintentar = true } = {}) {
-  const headers = { Accept: 'application/json' };
+async function request(path, { method = 'GET', body, archivo, comoBlob = false, reintentar = true } = {}) {
+  const headers = { Accept: comoBlob ? '*/*' : 'application/json' };
   if (method !== 'GET') {
     // Encabezado exigido por el backend en peticiones que modifican datos (CSRF).
     headers['X-Requested-With'] = 'Coraleum';
   }
   if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (archivo) {
+    // El archivo viaja tal cual; el servidor revisa su contenido real.
+    headers['Content-Type'] = archivo.type || 'application/octet-stream';
+    headers['X-Nombre-Archivo'] = encodeURIComponent(archivo.name);
+  }
 
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
     // Las cookies de sesión son HttpOnly: el navegador las envía solo.
     credentials: API_BASE ? 'include' : 'same-origin',
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: archivo || (body !== undefined ? JSON.stringify(body) : undefined),
   });
 
   // Token de acceso vencido: se renueva una vez y se repite la petición.
-  if (response.status === 401 && reintentar && !path.includes('/auth/')) {
+  const rutaDeSesion = /\/auth\/(me|estado|actividad|login|registro|refresh|logout|2fa\/verificar|olvide-password)$/.test(path);
+  if (response.status === 401 && reintentar && !rutaDeSesion) {
     if (await renovarSesion()) {
-      return request(path, { method, body, reintentar: false });
+      return request(path, { method, body, archivo, comoBlob, reintentar: false });
     }
-    window.dispatchEvent(new CustomEvent(EVENTO_SESION, { detail: { tipo: 'vencida' } }));
+    window.dispatchEvent(new CustomEvent(EVENTO_SESION, { detail: { tipo: 'vencida', mensaje: ultimoMotivoVencimiento } }));
   }
 
   if (!response.ok) {
@@ -78,7 +103,7 @@ async function request(path, { method = 'GET', body, reintentar = true } = {}) {
     throw new ApiError(detail, response.status, accion);
   }
 
-  return response.json();
+  return comoBlob ? response.blob() : response.json();
 }
 
 // ------------------------------------------------------------
@@ -87,6 +112,10 @@ async function request(path, { method = 'GET', body, reintentar = true } = {}) {
 
 export const auth = {
   me: () => request(`${API_PREFIX}/auth/me`),
+  // Estado de la sesión sin contarlo como actividad, y aviso de actividad real.
+  estado: () => request(`${API_PREFIX}/auth/estado`),
+  actividad: () => request(`${API_PREFIX}/auth/actividad`, { method: 'POST' }),
+  olvidePassword: (email) => request(`${API_PREFIX}/auth/olvide-password`, { method: 'POST', body: { email } }),
   renovar: renovarSesion,
   login: (email, password) => request(`${API_PREFIX}/auth/login`, { method: 'POST', body: { email, password } }),
   registro: (nombre, email, password, aceptaPolitica) => request(`${API_PREFIX}/auth/registro`, {
@@ -109,10 +138,18 @@ export const auth = {
     method: 'POST',
     body: { password_actual: passwordActual, password_nueva: passwordNueva },
   }),
-  solicitarInvestigador: (institucion, motivo) => request(`${API_PREFIX}/auth/solicitar-investigador`, {
+  solicitarInvestigador: (institucion, motivo, soporteId) => request(`${API_PREFIX}/auth/solicitar-investigador`, {
     method: 'POST',
-    body: { institucion, motivo },
+    body: { institucion, motivo, soporte_id: soporteId || null },
   }),
+  subirSoporte: (archivo) => request(`${API_PREFIX}/auth/solicitud/soporte`, { method: 'POST', archivo }),
+  cambiarEmail: (emailNuevo, password, codigo) => request(`${API_PREFIX}/auth/cambiar-email`, {
+    method: 'POST',
+    body: { email_nuevo: emailNuevo, password, codigo: codigo || null },
+  }),
+  sesiones: () => request(`${API_PREFIX}/auth/sesiones`),
+  cerrarSesionRemota: (id) => request(`${API_PREFIX}/auth/sesiones/${encodeURIComponent(id)}/cerrar`, { method: 'POST' }),
+  cerrarOtrasSesiones: () => request(`${API_PREFIX}/auth/sesiones/cerrar-otras`, { method: 'POST' }),
 };
 
 // ------------------------------------------------------------
@@ -132,6 +169,18 @@ export const admin = {
   }),
   restablecerPassword: (id) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/restablecer-password`, { method: 'POST' }),
   restablecer2fa: (id) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/restablecer-2fa`, { method: 'POST' }),
+  establecerPassword: (id, password) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/establecer-password`, { method: 'POST', body: { password } }),
+  descartarRecuperacion: (id) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/descartar-recuperacion`, { method: 'POST' }),
+  permisos: () => request(`${API_PREFIX}/admin/permisos`),
+  roles: () => request(`${API_PREFIX}/admin/roles`),
+  crearRol: (datos) => request(`${API_PREFIX}/admin/roles`, { method: 'POST', body: datos }),
+  actualizarRol: (clave, cambios) => request(`${API_PREFIX}/admin/roles/${encodeURIComponent(clave)}`, { method: 'PATCH', body: cambios }),
+  eliminarRol: (clave) => request(`${API_PREFIX}/admin/roles/${encodeURIComponent(clave)}`, { method: 'DELETE' }),
+  configuracion: () => request(`${API_PREFIX}/admin/configuracion/sesion`),
+  guardarConfiguracion: (cambios) => request(`${API_PREFIX}/admin/configuracion/sesion`, { method: 'PATCH', body: cambios }),
+  errores: () => request(`${API_PREFIX}/admin/errores?limite=100`),
+  simularError: () => request(`${API_PREFIX}/admin/errores/simular`, { method: 'POST' }),
+  descargarSoporte: (id) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/soporte`, { comoBlob: true }),
   auditoria: (soloFallidos = false) => request(`${API_PREFIX}/admin/auditoria?limite=200${soloFallidos ? '&solo_fallidos=true' : ''}`),
 };
 

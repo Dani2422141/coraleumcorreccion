@@ -1,18 +1,24 @@
-"""Dependencias de FastAPI para sesión, roles y protección CSRF.
+"""Dependencias de FastAPI: sesión, permisos y protección CSRF.
 
-La autorización se decide SIEMPRE en el backend, con el rol leído de la
-base de datos en cada petición: si el administrador cambia un rol o
-desactiva una cuenta, el cambio se aplica de inmediato.
+La autorización se decide SIEMPRE en el backend: en cada petición se lee
+de la base de datos el usuario, sus roles y el estado de su sesión. Si un
+administrador cambia un rol, desactiva una cuenta o reduce el tiempo de
+inactividad, el cambio se aplica de inmediato.
 """
+
+from datetime import timedelta
 
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import Depends, HTTPException, Request
 
-from api import auditoria, config, db
-from api.seguridad import decodificar_access_token
+from api import auditoria, config, db, permisos, sesion_config
+from api.seguridad import a_utc, ahora, decodificar_access_token
 
 METODOS_SEGUROS = {"GET", "HEAD", "OPTIONS"}
+
+# La última actividad se guarda como máximo cada 5 s (evita escrituras de más).
+_SEGUNDOS_ENTRE_REGISTROS_DE_ACTIVIDAD = 5
 
 
 def proteger_csrf(request: Request):
@@ -32,7 +38,90 @@ def proteger_csrf(request: Request):
         raise HTTPException(status_code=403, detail="Origen no permitido.")
 
 
-def _cargar_usuario(request: Request):
+# ------------------------------------------------------------
+# Sesiones del servidor
+# ------------------------------------------------------------
+
+# Motivos de cierre que se explican a la persona. Los demás ("rotada",
+# "revocada", "robo"…) se muestran como "Sesión no válida".
+MENSAJES_VENCIMIENTO = {
+    "inactividad": "Tu sesión se cerró por inactividad. Inicia sesión de nuevo.",
+    "duracion": "Tu sesión alcanzó su duración máxima. Inicia sesión de nuevo.",
+    "reemplazada": (
+        "Tu sesión se cerró porque se inició sesión con tu cuenta en otro navegador o dispositivo. "
+        "Si no fuiste tú, cambia tu contraseña."
+    ),
+    "remota": "Esta sesión se cerró desde otro navegador o dispositivo.",
+    "logout": "Cerraste sesión en otra pestaña o ventana.",
+    "credenciales": "Tu contraseña o tu correo cambiaron. Inicia sesión de nuevo con los datos nuevos.",
+    "cerrada": "Sesión no válida. Inicia sesión de nuevo.",
+}
+
+
+class ErrorSesion(HTTPException):
+    """401 que además borra las cookies de sesión (ver manejador en main.py)."""
+
+    borrar_cookies = True
+
+    def __init__(self, motivo):
+        motivo = motivo if motivo in MENSAJES_VENCIMIENTO else "cerrada"
+        super().__init__(
+            status_code=401,
+            detail=MENSAJES_VENCIMIENTO[motivo],
+            headers={"X-Coraleum-Accion": f"sesion-{motivo}"},
+        )
+
+
+def revocar_sesiones(filtro, motivo):
+    """Cierra en el servidor las sesiones que cumplan el filtro, dejando el motivo."""
+    filtro = {**filtro, "revocado_en": None}
+    return db.sesiones.update_many(filtro, {"$set": {"revocado_en": ahora(), "motivo_cierre": motivo}}).modified_count
+
+
+def motivo_sesion_vencida(sesion, conf=None):
+    """None si la sesión sigue activa; si no, la clave del motivo en MENSAJES_VENCIMIENTO."""
+    if sesion is None:
+        return "cerrada"
+    if sesion.get("revocado_en") is not None:
+        motivo = sesion.get("motivo_cierre")
+        return motivo if motivo in MENSAJES_VENCIMIENTO else "cerrada"
+    conf = conf or sesion_config.obtener()
+    momento = ahora()
+    inicio = a_utc(sesion.get("inicio") or sesion.get("creado_en"))
+    if inicio + timedelta(hours=conf["maxima_horas"]) <= momento:
+        return "duracion"
+    ultima = a_utc(sesion.get("ultima_actividad") or sesion.get("creado_en"))
+    if ultima + timedelta(minutes=conf["inactividad_minutos"]) <= momento:
+        return "inactividad"
+    return None
+
+
+def cerrar_sesion_vencida(sesion, motivo, request=None):
+    """Marca la sesión como cerrada y deja constancia en la auditoría (una vez)."""
+    if motivo not in ("inactividad", "duracion"):
+        return
+    resultado = db.sesiones.update_one(
+        {"_id": sesion["_id"], "revocado_en": None},
+        {"$set": {"revocado_en": ahora(), "motivo_cierre": motivo}},
+    )
+    if resultado.modified_count:
+        usuario = db.usuarios.find_one({"_id": sesion["usuario_id"]}, {"email": 1})
+        auditoria.registrar(
+            "sesion_expirada",
+            request,
+            usuario,
+            detalle="por inactividad" if motivo == "inactividad" else "duración máxima alcanzada",
+        )
+
+
+def registrar_actividad(sesion):
+    momento = ahora()
+    ultima = a_utc(sesion.get("ultima_actividad") or sesion.get("creado_en"))
+    if (momento - ultima).total_seconds() >= _SEGUNDOS_ENTRE_REGISTROS_DE_ACTIVIDAD:
+        db.sesiones.update_one({"_id": sesion["_id"]}, {"$set": {"ultima_actividad": momento}})
+
+
+def _cargar_usuario(request: Request, registrar=True):
     token = request.cookies.get(config.COOKIE_ACCESS)
     if not token:
         return None
@@ -41,8 +130,17 @@ def _cargar_usuario(request: Request):
         return None
     try:
         usuario_id = ObjectId(carga["sub"])
+        sid = ObjectId(carga.get("sid"))
     except (InvalidId, TypeError):
         return None
+
+    sesion = db.sesiones.find_one({"_id": sid, "usuario_id": usuario_id})
+    motivo = motivo_sesion_vencida(sesion)
+    if motivo:
+        if sesion is not None:
+            cerrar_sesion_vencida(sesion, motivo, request)
+        return None
+
     usuario = db.usuarios.find_one({"_id": usuario_id})
     if not usuario or not usuario.get("activo", False):
         return None
@@ -50,6 +148,11 @@ def _cargar_usuario(request: Request):
     # desactivación, restablecimiento): invalida tokens emitidos antes.
     if int(usuario.get("token_version", 0)) != int(carga.get("ver", -1)):
         return None
+
+    if registrar:
+        registrar_actividad(sesion)
+    usuario["_sesion_id"] = sid
+    usuario["_familia"] = sesion.get("familia")
     return usuario
 
 
@@ -79,39 +182,64 @@ def requerir_sesion_permitiendo_cambio(request: Request):
     return usuario
 
 
-def requerir_roles(*roles):
+# ------------------------------------------------------------
+# Permisos
+# ------------------------------------------------------------
+
+def _denegar(request, usuario, requeridos, propios):
+    auditoria.registrar(
+        "acceso_denegado",
+        request,
+        usuario,
+        detalle={"ruta": request.url.path, "requiere": " o ".join(requeridos)},
+        exito=False,
+    )
+    if set(requeridos) <= permisos.PERMISOS_DATOS and not (propios & permisos.PERMISOS_DATOS):
+        mensaje = "Esta sección requiere una cuenta de investigador aprobada."
+    elif "datos.historico" in requeridos:
+        mensaje = "Su rol no incluye acceso al registro histórico."
+    else:
+        mensaje = "No tiene permisos para esta acción."
+    raise HTTPException(status_code=403, detail=mensaje)
+
+
+def requerir_permiso(*requeridos):
+    """Exige al menos uno de los permisos indicados."""
+
     def dependencia(request: Request, usuario=Depends(requerir_sesion)):
-        if usuario.get("rol") not in roles:
-            auditoria.registrar(
-                "acceso_denegado",
-                request,
-                usuario,
-                detalle={"ruta": request.url.path, "rol": usuario.get("rol")},
-                exito=False,
-            )
-            if usuario.get("rol") == config.ROL_USUARIO and config.ROL_INVESTIGADOR in roles:
-                mensaje = "Esta sección requiere una cuenta de investigador aprobada."
-            else:
-                mensaje = "No tiene permisos para esta acción."
-            raise HTTPException(status_code=403, detail=mensaje)
+        propios = permisos.permisos_de(usuario)
+        if not propios & set(requeridos):
+            _denegar(request, usuario, requeridos, propios)
+        usuario["_permisos"] = propios
         return usuario
 
     return dependencia
 
 
-def requerir_admin_con_2fa(request: Request, usuario=Depends(requerir_roles(config.ROL_ADMIN))):
-    """Administrador que además tiene activa la verificación en dos pasos."""
-    if config.EXIGIR_2FA_ADMIN and not (usuario.get("dos_pasos") or {}).get("activo"):
-        raise HTTPException(
-            status_code=403,
-            detail="Por seguridad, los administradores deben activar la verificación en dos pasos.",
-            headers={"X-Coraleum-Accion": "configurar-2fa"},
-        )
-    return usuario
+def requerir_permiso_admin(*requeridos):
+    """Permiso administrativo + verificación en dos pasos activa."""
+
+    def dependencia(request: Request, usuario=Depends(requerir_permiso(*requeridos))):
+        if config.EXIGIR_2FA_ADMIN and not (usuario.get("dos_pasos") or {}).get("activo"):
+            raise HTTPException(
+                status_code=403,
+                detail="Por seguridad, las cuentas con permisos de administración deben activar la verificación en dos pasos.",
+                headers={"X-Coraleum-Accion": "configurar-2fa"},
+            )
+        return usuario
+
+    return dependencia
 
 
-def usuario_publico(usuario):
+# ------------------------------------------------------------
+# Representación pública
+# ------------------------------------------------------------
+
+def usuario_publico(usuario, roles_por_clave=None):
     """Representación segura de un usuario (sin hash ni datos internos)."""
+    roles_por_clave = roles_por_clave if roles_por_clave is not None else permisos.mapa_roles()
+    claves = permisos.claves_de(usuario)
+    propios = permisos.permisos_de(usuario, roles_por_clave)
     solicitud = usuario.get("solicitud") or None
     if solicitud:
         solicitud = {
@@ -120,20 +248,29 @@ def usuario_publico(usuario):
             "motivo": solicitud.get("motivo"),
             "fecha": _iso(solicitud.get("fecha")),
             "comentario_admin": solicitud.get("comentario_admin"),
+            "soporte": solicitud.get("soporte"),
         }
+    recuperacion = usuario.get("recuperacion_solicitada") or None
+    dos = usuario.get("dos_pasos") or {}
     return {
         "id": str(usuario["_id"]),
         "nombre": usuario.get("nombre"),
         "email": usuario.get("email"),
-        "rol": usuario.get("rol"),
+        "rol": permisos.rol_principal(claves),
+        "roles": [
+            {"clave": c, "nombre": roles_por_clave.get(c, {}).get("nombre", c)}
+            for c in claves
+            if c in roles_por_clave
+        ],
+        "permisos": sorted(propios),
         "activo": bool(usuario.get("activo", False)),
         "debe_cambiar_password": bool(usuario.get("debe_cambiar_password", False)),
         "solicitud": solicitud,
+        "recuperacion_solicitada": _iso(recuperacion.get("fecha")) if recuperacion else None,
         "creado_en": _iso(usuario.get("creado_en")),
         "ultimo_acceso": _iso(usuario.get("ultimo_acceso")),
-        "dos_pasos": bool((usuario.get("dos_pasos") or {}).get("activo")),
-        "codigos_recuperacion_restantes": len((usuario.get("dos_pasos") or {}).get("recuperacion") or [])
-        if (usuario.get("dos_pasos") or {}).get("activo") else None,
+        "dos_pasos": bool(dos.get("activo")),
+        "codigos_recuperacion_restantes": len(dos.get("recuperacion") or []) if dos.get("activo") else None,
         "politica_version": (usuario.get("consentimiento") or {}).get("version"),
         # True si la persona no ha aceptado la versión vigente de la política.
         "politica_pendiente": (usuario.get("consentimiento") or {}).get("version") != config.POLITICA_VERSION,

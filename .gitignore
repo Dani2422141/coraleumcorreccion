@@ -35,3 +35,6 @@ resultados/observaciones_noaa_2026-*.csv
 
 # --- Copias de seguridad (contienen datos personales) ---
 respaldos/
+
+# Registro de errores de las pruebas
+tests/.logs/

@@ -140,3 +140,58 @@ urllib3 2.8.0 y certifi 2026.10.19; las 48 pruebas siguen pasando y la auditorí
 | RS16 | El sistema debe conservar prueba de la autorización de tratamiento de datos. |
 | RS17 | La base de datos debe respaldarse periódicamente con verificación de integridad. |
 | RS18 | Cada cambio en el repositorio debe pasar pruebas automáticas, auditoría de dependencias, análisis estático y detección de secretos. |
+
+## Tercera fase: pruebas solicitadas en la sustentación
+
+| # | Prueba | Antes | Ahora |
+|---|---|---|---|
+| 1 | URL de la sesión en otro navegador | Correcto | Sin cambios: la sesión vive en cookies HttpOnly, no en la URL |
+| 2 | 15 caracteres especiales en el correo | Correcto | Mensaje claro: "El correo electrónico no es válido." |
+| 3 | "Olvidé mi contraseña" | No existía | Solicitud con respuesta genérica (sin enumeración), límite por IP; el admin la atiende |
+| 4 | 5 contraseñas incorrectas | Bloqueo visible en el 6.º intento | Bloqueo informado en el 5.º intento |
+| 5 | Crear un rol con 2 permisos para 2 usuarios | Roles fijos | RBAC: 7 permisos, roles personalizados |
+| 6 | Correo duplicado | Correcto | Sin cambios (índice único, sin distinguir mayúsculas) |
+| 7 | Admin pone una contraseña de 1 carácter | El admin no podía escribir contraseñas | Puede escribirla, con la misma política: se rechaza |
+| 8 | 2 roles a un usuario y cambiar todos sus permisos | Un rol por usuario | Varios roles; permisos = unión; cambios inmediatos |
+| 9 | Auditoría de cambios del admin | Correcto | Más eventos: roles, configuración, contraseñas rechazadas, sesiones vencidas |
+| 10 | Reducir la expiración del token por inactividad | No había inactividad real (sesión de 7 días) | Sesión de servidor con inactividad; configurable desde el panel |
+| 11 | Aumentar la expiración por inactividad | Requería editar `.env` | Configurable con límites máximos (NIST AAL2: 60 min, 24 h) |
+| 12 | Secuencia 1-15 en el login | Correcto | Sin cambios: error genérico, cuenta para el bloqueo |
+| 13 | Registro con la secuencia 1-15 | **Se aceptaba** | Rechazada: solo números, secuencias y filas del teclado |
+
+Controles nuevos:
+
+- **Sesión de servidor**: el token de acceso lleva el identificador de la sesión (`sid`); en cada
+  petición se comprueba que la sesión siga abierta, dentro de la inactividad y de la duración
+  máxima. Cerrar sesión invalida el token al instante.
+- **Anti-escalamiento**: solo se conceden permisos que uno tiene; nadie cambia sus propios roles;
+  Usuario e Investigador solo admiten permisos de datos.
+- **2FA por permiso**: cualquier permiso administrativo exige verificación en dos pasos.
+
+Pruebas: `tests/test_pruebas_profesor.py` (22 casos, uno o más por cada prueba); en total 70
+pruebas automáticas. Los 13 flujos se verificaron también en la interfaz, incluido el cierre
+real por inactividad a los 75 s con el límite en 1 minuto.
+
+## Cuarta fase: pruebas 13 a 19 de la lista ampliada
+
+| # | Prueba | Antes | Ahora |
+|---|---|---|---|
+| 13 | Copiar "ABC" del campo de contraseña | Enmascarado, pero con "Mostrar" se podía copiar | No se puede copiar, cortar ni arrastrar (ni visible); "Mostrar" se oculta solo a los 20 s; pegar sí (gestores de contraseñas); sin corrector ortográfico |
+| 14 | `.exe` renombrado a `.pdf` | No había módulo de carga | Soporte PDF en la solicitud de investigador, validado por contenido (firma, estructura, sin contenido activo), 2 MB, cifrado, auditado |
+| 15 | Mismo usuario en dos navegadores | Permitido sin control | Límite configurable (por defecto 1): se cierra la sesión menos usada y se avisa a ambos; lista "Sesiones abiertas" |
+| 16 | Forzar un fallo y ver el registro | Solo en la consola de Docker | Colección `registro_errores` + `logs/errores.log`; código de referencia; pestaña Errores; las caídas de la BD se guardan al volver |
+| 17 | URL de una consulta en otra pestaña y cerrar sesión | Sin URL por sección; la otra pestaña tardaba hasta 15 s | Direcciones por sección y consulta; cierre inmediato en todas las pestañas (BroadcastChannel) |
+| 18 | Datos sensibles cifrados en la BD | Contraseña con Argon2id; correo, nombre e IP en claro | Cifrado por campo (Fernet) con índice ciego HMAC para el correo; migración automática |
+| 19 | Cambiar contraseña y correo desde el perfil | Solo la contraseña | Cambio de correo con contraseña (y código 2FA), unicidad, cierre de las demás sesiones, auditoría |
+
+Correcciones encontradas al revisar:
+
+- Al vencer una sesión por inactividad, la siguiente renovación se registraba como
+  "reutilización de sesión" (posible robo). Ahora cada cierre guarda su motivo y solo la
+  reutilización real de un token rotado se trata como robo.
+- Dos pestañas que renovaban la sesión a la vez podían cerrarla; ahora hay un margen de 30 s
+  y la renovación se coordina entre pestañas (Web Locks).
+- Las respuestas 401 de `/auth/refresh` no borraban las cookies del navegador; ahora sí.
+
+Pruebas: `tests/test_pruebas_nuevas.py` (16 casos); en total 87 pruebas automáticas, más 28
+verificaciones en un navegador real (Chromium) para las pruebas 13 a 19.

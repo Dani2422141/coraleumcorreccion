@@ -59,6 +59,64 @@ def verificar_tiempo_constante(password):
     verificar_password(password, None)
 
 
+# Secuencias que la gente usa para "completar" una contraseña larga.
+_SECUENCIAS = (
+    "abcdefghijklmnñopqrstuvwxyz",
+    "0123456789",
+    "qwertyuiop",
+    "asdfghjklñ",
+    "zxcvbnm",
+    "1qaz2wsx3edc4rfv5tgb",
+    "!@#$%^&*()",
+)
+_LONGITUD_TRAMO = 4  # un tramo secuencial cuenta desde 4 caracteres seguidos
+_PROPORCION_MAXIMA_SECUENCIAL = 0.6
+
+
+def _proporcion_secuencial(texto):
+    """Fracción de caracteres que forman parte de tramos secuenciales.
+
+    Cuenta tramos de 4 o más caracteres seguidos de una secuencia conocida
+    (abecedario, dígitos, filas del teclado), en orden directo o inverso.
+    Ej.: "qwertyuiop12" → 10 de 12 caracteres; "123456789101112131415" →
+    los 9 primeros, más la regla de "solo números".
+    """
+    cubiertos = [False] * len(texto)
+    for secuencia in _SECUENCIAS:
+        for patron in (secuencia, secuencia[::-1]):
+            i = 0
+            while i < len(texto):
+                largo = 0
+                inicio = patron.find(texto[i]) if texto[i] in patron else -1
+                if inicio >= 0:
+                    while (
+                        i + largo < len(texto)
+                        and inicio + largo < len(patron)
+                        and texto[i + largo] == patron[inicio + largo]
+                    ):
+                        largo += 1
+                if largo >= _LONGITUD_TRAMO:
+                    for j in range(i, i + largo):
+                        cubiertos[j] = True
+                    i += largo
+                else:
+                    i += 1
+    return sum(cubiertos) / len(texto) if texto else 0
+
+
+def _es_concatenacion_de_numeros(digitos):
+    """True si es una cuenta seguida: "123456789101112", "20212223"…"""
+    for inicio_largo in range(1, 4):
+        n = int(digitos[:inicio_largo])
+        armado = ""
+        while len(armado) < len(digitos):
+            armado += str(n)
+            n += 1
+        if armado[: len(digitos)] == digitos:
+            return True
+    return False
+
+
 def validar_politica_password(password, email="", nombre=""):
     """Devuelve un mensaje de error o None si la contraseña es aceptable."""
     if not isinstance(password, str):
@@ -70,6 +128,13 @@ def validar_politica_password(password, email="", nombre=""):
     minuscula = password.lower()
     if minuscula in _COMUNES or len(set(password)) <= 3:
         return "Esa contraseña es demasiado común o predecible. Elija otra."
+    sin_separadores = "".join(c for c in minuscula if not c.isspace() and c not in "-_.")
+    if sin_separadores.isdigit():
+        if _es_concatenacion_de_numeros(sin_separadores):
+            return "La contraseña no puede ser una secuencia de números (por ejemplo, 123456789101112). Elija otra."
+        return "La contraseña no puede contener solo números. Use palabras o una frase."
+    if _proporcion_secuencial(sin_separadores) >= _PROPORCION_MAXIMA_SECUENCIAL:
+        return "La contraseña está formada por secuencias predecibles (como abcd, 1234 o qwerty). Elija otra."
     local = (email or "").split("@")[0].lower()
     if len(local) >= 4 and local in minuscula:
         return "La contraseña no debe contener su correo."
@@ -99,15 +164,21 @@ def a_utc(fecha):
     return fecha.astimezone(timezone.utc)
 
 
-def crear_access_token(usuario):
+def crear_access_token(usuario, sid, minutos):
+    """Token de acceso firmado, ligado a una sesión del servidor (`sid`).
+
+    Aunque el token siga vigente, el servidor rechaza la petición si la
+    sesión fue cerrada, venció por inactividad o superó su duración máxima.
+    """
     momento = ahora()
     carga = {
         "sub": str(usuario["_id"]),
         "ver": int(usuario.get("token_version", 0)),
+        "sid": str(sid),
         "tipo": "access",
         "iss": config.JWT_EMISOR,
         "iat": momento,
-        "exp": momento + timedelta(minutes=config.ACCESS_MINUTOS),
+        "exp": momento + timedelta(minutes=minutos),
         "jti": uuid.uuid4().hex,
     }
     return jwt.encode(carga, config.JWT_SECRET, algorithm=config.JWT_ALGORITMO)
@@ -144,12 +215,12 @@ def _ruta_refresh():
     return f"{config.COOKIE_PREFIJO_RUTA.rstrip('/')}/auth"
 
 
-def poner_cookies_sesion(respuesta, access_token, refresh_token):
+def poner_cookies_sesion(respuesta, access_token, refresh_token, access_segundos, refresh_segundos):
     comunes = {"httponly": True, "secure": config.COOKIE_SECURE, "samesite": "strict"}
     respuesta.set_cookie(
         config.COOKIE_ACCESS,
         access_token,
-        max_age=config.ACCESS_MINUTOS * 60,
+        max_age=access_segundos,
         path=config.COOKIE_PREFIJO_RUTA,
         **comunes,
     )
@@ -157,7 +228,7 @@ def poner_cookies_sesion(respuesta, access_token, refresh_token):
     respuesta.set_cookie(
         config.COOKIE_REFRESH,
         refresh_token,
-        max_age=config.REFRESH_DIAS * 24 * 3600,
+        max_age=refresh_segundos,
         path=_ruta_refresh(),
         **comunes,
     )

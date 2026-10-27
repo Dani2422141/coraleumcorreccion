@@ -26,6 +26,7 @@ export default function ViewExplorador({
   geojson,
   selectedArea,
   onSelectArea,
+  puedeVerHistorico = true,
 }) {
   const scrollRef = useRef(null);
   const nodeRef = useRef(null);
@@ -184,7 +185,7 @@ export default function ViewExplorador({
           {selectedArea && <div className="glass rounded-full px-3 py-1.5 text-xs" style={{ color: '#bdebe5' }}>FID {selectedArea.fid}</div>}
         </div>
         {selectedArea ? (
-          <ViewDetalle area={selectedArea} fecha={selectedDate} embedded onGoHistorico={() => historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} onBack={() => {}} />
+          <ViewDetalle area={selectedArea} fecha={selectedDate} embedded onGoHistorico={puedeVerHistorico ? () => historyRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) : null} onBack={() => {}} />
         ) : (
           <div className="detail-empty-state">
             <div className="detail-empty-icon">⌖</div>
@@ -196,13 +197,19 @@ export default function ViewExplorador({
         )}
       </section>
 
-      {selectedArea && (
+      {selectedArea && puedeVerHistorico && (
         <>
         <div className="explorer-flow-divider"><span>evolución histórica del área seleccionada</span></div>
         <section ref={historyRef} className="explorer-history-section glass rounded-2xl p-4 md:p-5 shrink-0" aria-live="polite">
           <ViewHistorico area={selectedArea} embedded onBack={() => {}} />
         </section>
         </>
+      )}
+      {selectedArea && !puedeVerHistorico && (
+        <div className="detail-empty-state" style={{ marginTop: 12 }}>
+          <div className="detail-empty-icon">🔒</div>
+          <div className="text-xs" style={{ color: 'rgba(194,231,231,.72)' }}>Tu rol no incluye el registro histórico. Un administrador puede asignarte el permiso.</div>
+        </div>
       )}
     </div>
   );

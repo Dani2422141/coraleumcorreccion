@@ -1,7 +1,10 @@
 """Pruebas de autenticación, autorización por roles y protecciones."""
 
+from datetime import timedelta
+
 import jwt
 
+from api.seguridad import ahora
 from api import config, db
 from tests.conftest import CSRF, PASSWORD_ADMIN, login, registrar
 
@@ -117,8 +120,11 @@ def test_login_mensaje_generico(cliente, crear_cliente):
 def test_bloqueo_tras_intentos_fallidos(cliente, crear_cliente):
     registrar(cliente)
     otro = crear_cliente()
-    for _ in range(config.MAX_INTENTOS_FALLIDOS):
+    for _ in range(config.MAX_INTENTOS_FALLIDOS - 1):
         assert login(otro, "ana@ejemplo.org", "Incorrecta-123456").status_code == 401
+    # El 5.º intento fallido bloquea la cuenta y lo informa de inmediato.
+    quinto = login(otro, "ana@ejemplo.org", "Incorrecta-123456")
+    assert quinto.status_code == 423 and "bloqueada" in quinto.json()["detail"]
     # Bloqueada incluso con la contraseña correcta.
     assert login(otro, "ana@ejemplo.org", PASSWORD).status_code == 423
     eventos = [e["evento"] for e in db.auditoria_accesos.find()]
@@ -156,12 +162,28 @@ def test_reutilizar_refresh_revoca_la_familia(cliente, crear_cliente):
     registrar(cliente)
     robado = cliente.cookies.get(config.COOKIE_REFRESH)
     assert cliente.post("/auth/refresh", headers=CSRF).status_code == 200  # el usuario legítimo renueva
+    # Pasado el margen de gracia entre pestañas (30 s), reusar el token es sospechoso.
+    db.sesiones.update_many({"motivo_cierre": "rotada"}, {"$set": {"revocado_en": ahora() - timedelta(seconds=60)}})
 
     atacante = crear_cliente()
     atacante.cookies.set(config.COOKIE_REFRESH, robado)
     assert atacante.post("/auth/refresh", headers=CSRF).status_code == 401
     # La sesión legítima derivada también queda revocada.
     assert cliente.post("/auth/refresh", headers=CSRF).status_code == 401
+
+
+def test_dos_pestanas_renuevan_a_la_vez_sin_cerrar_la_sesion(cliente, crear_cliente):
+    """Dos pestañas del mismo navegador renuevan con el mismo token casi a la vez."""
+    registrar(cliente)
+    viejo = cliente.cookies.get(config.COOKIE_REFRESH)
+    assert cliente.post("/auth/refresh", headers=CSRF).status_code == 200
+    otra_pestana = crear_cliente()
+    otra_pestana.cookies.set(config.COOKIE_REFRESH, viejo)
+    r = otra_pestana.post("/auth/refresh", headers=CSRF)
+    assert r.status_code == 409 and r.json()["accion"] == "reintentar"
+    # La sesión sigue viva y no se registró como robo.
+    assert cliente.get("/auth/me").json()["usuario"] is not None
+    assert db.auditoria_accesos.count_documents({"evento": "refresh_reutilizado"}) == 0
 
 
 def test_logout_revoca_el_refresh(cliente):
@@ -242,7 +264,7 @@ def test_solicitud_rechazada(cliente, admin):
 def test_no_admin_no_accede_a_administracion(cliente):
     registrar(cliente)
     assert cliente.get("/admin/usuarios").status_code == 403
-    db.usuarios.update_one({"email": "ana@ejemplo.org"}, {"$set": {"rol": "investigador"}})
+    db.usuarios.update_one({"email": "ana@ejemplo.org"}, {"$set": {"roles": ["investigador"]}})
     assert cliente.get("/admin/usuarios").status_code == 403
     assert cliente.get("/admin/auditoria").status_code == 403
 
@@ -258,7 +280,7 @@ def test_desactivar_expulsa_de_inmediato(cliente, admin):
 
 def test_admin_no_puede_quitarse_su_rol_ni_desactivarse(admin):
     mi_id = _id(admin)
-    assert admin.patch(f"/admin/usuarios/{mi_id}", json={"rol": "usuario"}, headers=CSRF).status_code == 400
+    assert admin.patch(f"/admin/usuarios/{mi_id}", json={"roles": ["usuario"]}, headers=CSRF).status_code == 400
     assert admin.patch(f"/admin/usuarios/{mi_id}", json={"activo": False}, headers=CSRF).status_code == 400
 
 
@@ -272,7 +294,7 @@ def test_restablecer_password_obliga_a_cambiarla(cliente, admin, crear_cliente):
     nuevo = crear_cliente()
     r = login(nuevo, "ana@ejemplo.org", temporal)
     assert r.json()["usuario"]["debe_cambiar_password"] is True
-    db.usuarios.update_one({"email": "ana@ejemplo.org"}, {"$set": {"rol": "investigador"}})
+    db.usuarios.update_one({"email": "ana@ejemplo.org"}, {"$set": {"roles": ["investigador"]}})
     bloqueado = nuevo.get("/fechas")
     assert bloqueado.status_code == 403 and bloqueado.json()["accion"] == "cambiar-password"
 

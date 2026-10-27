@@ -77,11 +77,21 @@ if len(JWT_SECRET) < 32:
         "Genere uno con: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
     )
 
+# Clave para cifrar los datos personales guardados en MongoDB (api/cifrado.py).
+# Es distinta de JWT_SECRET: cambiar la firma de sesiones no debe volver
+# ilegibles los datos. NO la cambie ni la pierda una vez haya cuentas creadas.
+CLAVE_CIFRADO_DATOS = os.getenv("CLAVE_CIFRADO_DATOS", "")
+if len(CLAVE_CIFRADO_DATOS) < 32:
+    raise RuntimeError(
+        "CLAVE_CIFRADO_DATOS no está definida o es muy corta (mínimo 32 caracteres). "
+        "Genere una con: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
+    )
+
 JWT_ALGORITMO = "HS256"
 JWT_EMISOR = "coraleum-api"
 
-ACCESS_MINUTOS = _int("ACCESS_TOKEN_MINUTOS", 15)
-REFRESH_DIAS = _int("REFRESH_TOKEN_DIAS", 7)
+# Vigencia del token, inactividad y duración máxima de la sesión:
+# configurables desde el panel (ver api/sesion_config.py).
 
 # Con HTTPS en producción debe ser true; en localhost (http) debe ser false.
 COOKIE_SECURE = _bool("COOKIE_SECURE", False)
@@ -114,8 +124,4 @@ EXIGIR_2FA_ADMIN = _bool("EXIGIR_2FA_ADMIN", True)
 POLITICA_VERSION = "2026-10"
 
 # --- Roles ---------------------------------------------------
-ROL_USUARIO = "usuario"
-ROL_INVESTIGADOR = "investigador"
-ROL_ADMIN = "admin"
-ROLES = (ROL_USUARIO, ROL_INVESTIGADOR, ROL_ADMIN)
-ROLES_DATOS = (ROL_INVESTIGADOR, ROL_ADMIN)
+# Los roles y permisos están en api/permisos.py.

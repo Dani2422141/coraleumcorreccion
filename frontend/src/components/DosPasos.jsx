@@ -142,14 +142,13 @@ export function ConfigurarDosPasos({ onActivado }) {
 
 /** Sección de "Mi cuenta" para gestionar la verificación en dos pasos. */
 export function SeccionDosPasos() {
-  const { usuario, setUsuario } = useAuth();
+  const { usuario, setUsuario, esAdmin } = useAuth();
   const [modo, setModo] = useState(null);
   const [password, setPassword] = useState('');
   const [codigo, setCodigo] = useState('');
   const [codigos, setCodigos] = useState(null);
   const [error, setError] = useState('');
   const [ok, setOk] = useState('');
-  const esAdmin = usuario.rol === 'admin';
 
   function cerrar() {
     setModo(null); setPassword(''); setCodigo(''); setError(''); setCodigos(null);
@@ -179,7 +178,7 @@ export function SeccionDosPasos() {
       <h3>Verificación en dos pasos</h3>
       <p className="ayuda">
         Además de la contraseña, se pide un código de tu celular al iniciar sesión.
-        {esAdmin ? ' Es obligatoria para administradores.' : ' Recomendada para todas las cuentas.'}
+        {esAdmin ? ' Es obligatoria para cuentas con permisos de administración.' : ' Recomendada para todas las cuentas.'}
       </p>
       <Mensaje tipo="ok">{ok}</Mensaje>
 

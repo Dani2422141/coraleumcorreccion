@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Sidebar from './components/Sidebar';
 import { ErrorState, LoadingState } from './components/LoadingState';
 import ViewInicio from './views/ViewInicio';
@@ -20,6 +20,33 @@ import './styles/cuentas.css';
 
 // Secciones que requieren una cuenta de investigador aprobada (o admin).
 const VISTAS_DATOS = new Set(['explorador', 'resumen']);
+
+const VISTAS = new Set(['inicio', 'corales', 'estres', 'indicadores', 'explorador', 'resumen', 'metodologia', 'acceso', 'registro', 'cuenta', 'admin', 'privacidad']);
+
+/**
+ * Cada sección y cada consulta tienen su propia dirección, por ejemplo
+ *   #/explorador?fecha=2026-10-20T00:00:00Z&area=12
+ * La dirección NUNCA lleva datos de sesión (esos viajan en cookies HttpOnly):
+ * copiarla a otra pestaña o navegador solo funciona si allí hay una sesión válida.
+ */
+function leerDireccion() {
+  const [ruta, consulta = ''] = window.location.hash.replace(/^#\/?/, '').split('?');
+  const params = new URLSearchParams(consulta);
+  const area = Number(params.get('area'));
+  return {
+    vista: VISTAS.has(ruta) ? ruta : 'inicio',
+    fecha: params.get('fecha') || null,
+    area: Number.isInteger(area) && area >= 0 ? area : null,
+  };
+}
+
+function construirDireccion(vista, fecha, area) {
+  const params = new URLSearchParams();
+  if (vista === 'explorador' && fecha) params.set('fecha', fecha);
+  if (vista === 'explorador' && area !== null && area !== undefined) params.set('area', String(area));
+  const consulta = params.toString();
+  return `#/${vista}${consulta ? `?${consulta}` : ''}`;
+}
 
 class ViewErrorBoundary extends React.Component {
   constructor(props) {
@@ -47,8 +74,10 @@ class ViewErrorBoundary extends React.Component {
 }
 
 export default function App() {
-  const { usuario, cargando: cargandoSesion, autenticado, puedeVerDatos, esAdmin, logout, debeAceptarPolitica } = useAuth();
-  const [view, setView] = useState('inicio');
+  const { usuario, cargando: cargandoSesion, autenticado, puedeVerDatos, puedeVerHistorico, esAdmin, tienePermiso, logout, debeAceptarPolitica, aviso, notificacion, setNotificacion } = useAuth();
+  const [view, setView] = useState(() => leerDireccion().vista);
+  // Fecha y área pedidas en la dirección; se aplican cuando llegan los datos.
+  const consultaPendiente = useRef({ fecha: leerDireccion().fecha, area: leerDireccion().area });
   const [selectedArea, setSelectedArea] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
   const [dates, setDates] = useState([]);
@@ -84,7 +113,13 @@ export default function App() {
         const [dateResponse, geojsonResponse] = await Promise.all([getFechas(), getGeoJSON()]);
         if (cancelled) return;
         setDates(dateResponse.fechas || []);
-        setSelectedDate(dateResponse.fecha_final || dateResponse.fechas?.at(-1) || null);
+        const pedida = consultaPendiente.current.fecha;
+        consultaPendiente.current.fecha = null;
+        setSelectedDate(
+          pedida && (dateResponse.fechas || []).includes(pedida)
+            ? pedida
+            : dateResponse.fecha_final || dateResponse.fechas?.at(-1) || null,
+        );
         setGeojson(geojsonResponse);
       } catch (err) {
         if (!cancelled) setError(err.message || 'No fue posible conectar con el backend.');
@@ -107,6 +142,12 @@ export default function App() {
         const features = new Map((geojson?.features || []).map((feature) => [Number(feature.properties.FID), feature]));
         const normalized = (response.areas || []).map((raw) => normalizeArea(raw, features.get(Number(raw.fid_area_coralina))));
         setAreas(normalized);
+        const areaPedida = consultaPendiente.current.area;
+        if (areaPedida !== null) {
+          consultaPendiente.current.area = null;
+          const encontrada = normalized.find((a) => a.fid === areaPedida);
+          if (encontrada) setSelectedArea(encontrada);
+        }
       } catch (err) {
         if (!cancelled) setError(err.message || 'No fue posible obtener las áreas.');
       }
@@ -117,16 +158,48 @@ export default function App() {
 
   // Contador de solicitudes pendientes para el administrador.
   useEffect(() => {
-    if (!esAdmin) { setPendientes(0); return; }
-    apiAdmin.usuarios({ solicitud: 'pendiente' }).then((r) => setPendientes(r.pendientes)).catch(() => {});
-  }, [esAdmin]);
+    const puedeVerSolicitudes = tienePermiso('solicitudes.aprobar') || tienePermiso('usuarios.gestionar');
+    if (!puedeVerSolicitudes || !usuario?.dos_pasos) { setPendientes(0); return; }
+    apiAdmin.usuarios({ solicitud: 'pendiente' })
+      .then((r) => setPendientes((tienePermiso('solicitudes.aprobar') ? r.pendientes : 0) + (tienePermiso('usuarios.gestionar') ? r.recuperaciones : 0)))
+      .catch(() => {});
+  }, [tienePermiso, usuario?.dos_pasos, view]);
 
   // Al cerrar sesión, salir de las vistas privadas.
   useEffect(() => {
     if (cargandoSesion) return;
+    // Sesión cerrada por inactividad u otra causa: llevar al inicio de sesión con el aviso.
+    if (!autenticado && aviso && view !== 'acceso') { setView('acceso'); return; }
     if (!autenticado && (view === 'cuenta' || view === 'admin')) setView('inicio');
     if (!esAdmin && view === 'admin') setView('inicio');
-  }, [autenticado, esAdmin, cargandoSesion, view]);
+  }, [autenticado, esAdmin, cargandoSesion, view, aviso]);
+
+  // La dirección del navegador refleja la sección y la consulta actuales.
+  useEffect(() => {
+    const destino = construirDireccion(view, selectedDate, selectedArea?.fid);
+    if (window.location.hash === destino) return;
+    const cambiaSeccion = leerDireccion().vista !== view;
+    window.history[cambiaSeccion ? 'pushState' : 'replaceState'](null, '', destino);
+  }, [view, selectedDate, selectedArea]);
+
+  // Botones Atrás/Adelante o una dirección pegada a mano.
+  useEffect(() => {
+    function alCambiarDireccion() {
+      const { vista, fecha, area } = leerDireccion();
+      setView(vista);
+      if (fecha && dates.includes(fecha)) setSelectedDate(fecha);
+      if (area !== null) {
+        const encontrada = areas.find((a) => a.fid === area);
+        if (encontrada) setSelectedArea(encontrada);
+      }
+    }
+    window.addEventListener('popstate', alCambiarDireccion);
+    window.addEventListener('hashchange', alCambiarDireccion);
+    return () => {
+      window.removeEventListener('popstate', alCambiarDireccion);
+      window.removeEventListener('hashchange', alCambiarDireccion);
+    };
+  }, [dates, areas]);
 
   const featureByFid = useMemo(
     () => new Map((geojson?.features || []).map((feature) => [Number(feature.properties.FID), feature])),
@@ -196,6 +269,7 @@ export default function App() {
             geojson={geojson}
             selectedArea={selectedArea}
             onSelectArea={handleSelectArea}
+            puedeVerHistorico={puedeVerHistorico}
           />
           </ViewErrorBoundary>
         );
@@ -292,6 +366,13 @@ export default function App() {
             )}
           </div>
         </header>
+
+        {autenticado && notificacion && (
+          <div className="notificacion-sesion shrink-0" role="status">
+            <span>{notificacion}</span>
+            <button type="button" onClick={() => setNotificacion('')}>Entendido</button>
+          </div>
+        )}
 
         {error && puedeVerDatos && VISTAS_DATOS.has(view) && dates.length > 0 && (
           <div className="shrink-0 px-5 py-1.5 text-xs font-mono" style={{ background: 'rgba(255,107,71,0.08)', color: '#ff9b6b', borderBottom: '1px solid rgba(255,107,71,0.15)' }}>

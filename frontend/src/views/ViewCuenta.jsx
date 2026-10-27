@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { auth } from '../data/api';
-import { BadgeRol, BadgeSolicitud, Campo, CampoPassword, Mensaje, formatearFecha, pistaPassword } from '../components/Formulario';
+import { BadgesRoles, BadgeSolicitud, NOMBRES_PERMISOS, Campo, CampoPassword, Mensaje, formatearFecha, pistaPassword } from '../components/Formulario';
 import { CampoCodigo, SeccionDosPasos } from '../components/DosPasos';
 import { PoliticaContenido } from './ViewPrivacidad';
 
@@ -11,9 +11,11 @@ function SolicitudInvestigador() {
   const [motivo, setMotivo] = useState('');
   const [error, setError] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const [archivo, setArchivo] = useState(null);
+  const entradaArchivo = useRef(null);
   const solicitud = usuario.solicitud;
 
-  if (usuario.rol !== 'usuario') {
+  if ((usuario.permisos || []).includes('datos.consultar')) {
     return (
       <div className="cuenta-card">
         <h3>Acceso de investigación</h3>
@@ -29,13 +31,39 @@ function SolicitudInvestigador() {
     setError('');
     setEnviando(true);
     try {
-      const { usuario: actualizado } = await auth.solicitarInvestigador(institucion.trim(), motivo.trim());
+      let soporteId = null;
+      if (archivo) {
+        // El servidor revisa el CONTENIDO del archivo, no solo su extensión.
+        const { soporte } = await auth.subirSoporte(archivo);
+        soporteId = soporte.id;
+      }
+      const { usuario: actualizado } = await auth.solicitarInvestigador(institucion.trim(), motivo.trim(), soporteId);
       setUsuario(actualizado);
     } catch (err) {
       setError(err.message);
+      if (archivo) { setArchivo(null); if (entradaArchivo.current) entradaArchivo.current.value = ''; }
     } finally {
       setEnviando(false);
     }
+  }
+
+  function elegirArchivo(evento) {
+    setError('');
+    const elegido = evento.target.files?.[0] || null;
+    // Revisión rápida en el navegador; la validación real la hace el servidor.
+    if (elegido && !elegido.name.toLowerCase().endsWith('.pdf')) {
+      setError('Solo se permiten documentos PDF (.pdf).');
+      evento.target.value = '';
+      setArchivo(null);
+      return;
+    }
+    if (elegido && elegido.size > 2 * 1024 * 1024) {
+      setError('El archivo supera el tamaño máximo permitido (2 MB).');
+      evento.target.value = '';
+      setArchivo(null);
+      return;
+    }
+    setArchivo(elegido);
   }
 
   return (
@@ -49,6 +77,7 @@ function SolicitudInvestigador() {
       {solicitud?.estado === 'pendiente' ? (
         <Mensaje tipo="info">
           Tu solicitud ({solicitud.institucion}) está <strong>pendiente de revisión</strong> desde {formatearFecha(solicitud.fecha)}.
+          {solicitud.soporte && <> Documento adjunto: <strong>{solicitud.soporte.nombre}</strong>.</>}
         </Mensaje>
       ) : (
         <>
@@ -65,6 +94,13 @@ function SolicitudInvestigador() {
             <Campo etiqueta="¿Para qué necesitas los datos?" pista={`${motivo.length}/500 · mínimo 10 caracteres`}>
               <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} minLength={10} maxLength={500} required placeholder="Ej.: Análisis del DHW en las áreas de Barú para mi trabajo de grado." />
             </Campo>
+            <Campo
+              etiqueta="Soporte institucional (opcional)"
+              pista={archivo ? `${archivo.name} · ${(archivo.size / 1024).toFixed(0)} KB` : 'Carta o carné en PDF, máximo 2 MB. Se verifica que el archivo sea realmente un PDF.'}
+              pistaOk={Boolean(archivo)}
+            >
+              <input ref={entradaArchivo} type="file" accept=".pdf,application/pdf" onChange={elegirArchivo} className="entrada-archivo" />
+            </Campo>
             <button className="btn btn-primario" type="submit" disabled={enviando}>{enviando ? 'Enviando…' : 'Enviar solicitud'}</button>
           </form>
         </>
@@ -74,7 +110,7 @@ function SolicitudInvestigador() {
 }
 
 export function FormularioCambioPassword({ obligatorio = false, onListo }) {
-  const { setUsuario } = useAuth();
+  const { setUsuario, avisarPestanas } = useAuth();
   const [actual, setActual] = useState('');
   const [nueva, setNueva] = useState('');
   const [confirmacion, setConfirmacion] = useState('');
@@ -94,6 +130,7 @@ export function FormularioCambioPassword({ obligatorio = false, onListo }) {
     try {
       const { usuario: actualizado } = await auth.cambiarPassword(actual, nueva);
       setUsuario(actualizado);
+      avisarPestanas('actualizado');
       setActual(''); setNueva(''); setConfirmacion('');
       setOk('Contraseña actualizada. Se cerraron tus otras sesiones abiertas.');
       onListo?.();
@@ -122,6 +159,132 @@ export function FormularioCambioPassword({ obligatorio = false, onListo }) {
         {enviando ? 'Guardando…' : 'Cambiar contraseña'}
       </button>
     </form>
+  );
+}
+
+/** Cambio del correo de la cuenta (pide contraseña y, si aplica, código 2FA). */
+function CambioCorreo() {
+  const { usuario, setUsuario, avisarPestanas } = useAuth();
+  const [abierto, setAbierto] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [error, setError] = useState('');
+  const [ok, setOk] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  function cerrar() {
+    setAbierto(false); setEmail(''); setPassword(''); setCodigo(''); setError('');
+  }
+
+  async function enviar(evento) {
+    evento.preventDefault();
+    setError('');
+    setOk('');
+    setEnviando(true);
+    try {
+      const { usuario: actualizado } = await auth.cambiarEmail(email.trim(), password, codigo);
+      setUsuario(actualizado);
+      avisarPestanas('actualizado');
+      cerrar();
+      setOk(`Correo actualizado a ${actualizado.email}. Úsalo para iniciar sesión. Se cerraron tus sesiones en otros navegadores.`);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="cuenta-card">
+      <h3>Correo de la cuenta</h3>
+      <p className="ayuda">Actual: <strong>{usuario.email}</strong></p>
+      <Mensaje tipo="ok">{ok}</Mensaje>
+      {!abierto ? (
+        <button type="button" className="btn btn-secundario" onClick={() => { setOk(''); setAbierto(true); }}>Cambiar correo</button>
+      ) : (
+        <form onSubmit={enviar}>
+          <Mensaje tipo="error">{error}</Mensaje>
+          <Campo etiqueta="Correo nuevo">
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={254} required autoComplete="email" autoFocus />
+          </Campo>
+          <CampoPassword etiqueta="Confirma con tu contraseña actual" valor={password} onCambio={setPassword} />
+          {usuario.dos_pasos && <CampoCodigo valor={codigo} onCambio={setCodigo} autoFocus={false} />}
+          <div className="acciones">
+            <button className="btn btn-primario" type="submit" disabled={enviando}>{enviando ? 'Guardando…' : 'Guardar correo'}</button>
+            <button className="btn btn-secundario" type="button" onClick={cerrar}>Cancelar</button>
+          </div>
+        </form>
+      )}
+    </div>
+  );
+}
+
+/** Sesiones abiertas de la cuenta en distintos navegadores o dispositivos. */
+function SesionesAbiertas() {
+  const [datos, setDatos] = useState(null);
+  const [error, setError] = useState('');
+  const [mensaje, setMensaje] = useState('');
+
+  const cargar = useCallback(async () => {
+    setError('');
+    try {
+      setDatos(await auth.sesiones());
+    } catch (err) {
+      setError(err.message);
+    }
+  }, []);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  async function cerrarUna(id) {
+    setMensaje('');
+    try {
+      await auth.cerrarSesionRemota(id);
+      setMensaje('Sesión cerrada.');
+      cargar();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function cerrarOtras() {
+    setMensaje('');
+    try {
+      const { cerradas } = await auth.cerrarOtrasSesiones();
+      setMensaje(cerradas ? `Se cerraron ${cerradas} sesión(es).` : 'No había otras sesiones abiertas.');
+      cargar();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  const otras = (datos?.sesiones || []).filter((s) => !s.actual).length;
+  return (
+    <div className="cuenta-card">
+      <h3>Sesiones abiertas</h3>
+      <p className="ayuda">
+        Coraleum permite {datos?.limite === 1 ? 'una sesión a la vez' : `hasta ${datos?.limite ?? '…'} sesiones a la vez`} por cuenta.
+        Al iniciar sesión en otro navegador se cierra la que lleva más tiempo sin usarse.
+      </p>
+      <Mensaje tipo="error">{error}</Mensaje>
+      <Mensaje tipo="ok">{mensaje}</Mensaje>
+      <ul className="lista-sesiones">
+        {(datos?.sesiones || []).map((s) => (
+          <li key={s.id}>
+            <div>
+              <strong>{s.navegador}</strong> {s.actual && <span className="badge badge-aprobada">Esta sesión</span>}
+              <div className="ayuda" style={{ margin: 0 }}>IP {s.ip || '—'} · inició {formatearFecha(s.inicio)} · último uso {formatearFecha(s.ultima_actividad)}</div>
+            </div>
+            {!s.actual && <button type="button" className="btn btn-secundario btn-pequeno" onClick={() => cerrarUna(s.id)}>Cerrar</button>}
+          </li>
+        ))}
+      </ul>
+      <div className="acciones">
+        <button type="button" className="btn btn-secundario" onClick={cargar}>Actualizar</button>
+        {otras > 0 && <button type="button" className="btn btn-peligro" onClick={cerrarOtras}>Cerrar las demás sesiones</button>}
+      </div>
+    </div>
   );
 }
 
@@ -278,13 +441,15 @@ export default function ViewCuenta({ onNavigate }) {
               <h3>Datos de la cuenta</h3>
               <div style={{ display: 'grid', gap: 10, marginTop: 14, fontSize: 13 }}>
                 <div><span className="ayuda" style={{ margin: 0 }}>Correo</span><div>{usuario.email}</div></div>
-                <div><span className="ayuda" style={{ margin: 0 }}>Rol</span><div style={{ marginTop: 4 }}><BadgeRol rol={usuario.rol} /> {usuario.solicitud && usuario.rol === 'usuario' && <BadgeSolicitud estado={usuario.solicitud.estado} />}</div></div>
+                <div><span className="ayuda" style={{ margin: 0 }}>Roles</span><div style={{ marginTop: 4 }}><BadgesRoles roles={usuario.roles} /> {usuario.solicitud && !(usuario.permisos || []).includes('datos.consultar') && <BadgeSolicitud estado={usuario.solicitud.estado} />}</div></div>
+                <div><span className="ayuda" style={{ margin: 0 }}>Permisos</span><div style={{ marginTop: 4, fontSize: 12.5 }}>{(usuario.permisos || []).length ? usuario.permisos.map((p) => NOMBRES_PERMISOS[p] || p).join(' · ') : 'Contenido educativo (sin permisos adicionales)'}</div></div>
                 <div><span className="ayuda" style={{ margin: 0 }}>Miembro desde</span><div>{formatearFecha(usuario.creado_en)}</div></div>
               </div>
               <div className="acciones" style={{ marginTop: 18 }}>
                 <button type="button" className="btn btn-secundario" onClick={logout}>Cerrar sesión</button>
               </div>
             </div>
+            <CambioCorreo />
             <SolicitudInvestigador />
           </div>
 
@@ -294,6 +459,7 @@ export default function ViewCuenta({ onNavigate }) {
               <p className="ayuda">Al cambiarla se cierran tus sesiones abiertas en otros dispositivos.</p>
               <FormularioCambioPassword />
             </div>
+            <SesionesAbiertas />
             <SeccionDosPasos />
             <SeccionMisDatos onNavigate={onNavigate} />
           </div>

@@ -45,9 +45,17 @@ services:
       ENABLE_DOCS: ${ENABLE_DOCS:-false}
       # Autenticación
       JWT_SECRET: ${JWT_SECRET:?Defina JWT_SECRET en .env}
+      # Cifrado de datos personales en MongoDB (no la cambie una vez haya cuentas).
+      CLAVE_CIFRADO_DATOS: ${CLAVE_CIFRADO_DATOS:?Defina CLAVE_CIFRADO_DATOS en .env}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Valores iniciales; luego se ajustan en Administración → Sesión.
       ACCESS_TOKEN_MINUTOS: ${ACCESS_TOKEN_MINUTOS:-15}
-      REFRESH_TOKEN_DIAS: ${REFRESH_TOKEN_DIAS:-7}
+      SESION_INACTIVIDAD_MINUTOS: ${SESION_INACTIVIDAD_MINUTOS:-30}
+      SESION_MAXIMA_HORAS: ${SESION_MAXIMA_HORAS:-12}
+      SESIONES_SIMULTANEAS: ${SESIONES_SIMULTANEAS:-1}
+    volumes:
+      # Registro de errores en archivo (además de MongoDB): logs/errores.log
+      - backend_logs:/app/logs
     depends_on:
       mongodb:
         condition: service_healthy
@@ -70,3 +78,4 @@ services:
 
 volumes:
   mongodb_data:
+  backend_logs:
