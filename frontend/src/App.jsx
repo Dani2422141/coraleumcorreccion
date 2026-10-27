@@ -13,15 +13,21 @@ import ViewAcceso from './views/ViewAcceso';
 import ViewCuenta, { AceptarPoliticaObligatorio, CambioPasswordObligatorio } from './views/ViewCuenta';
 import ViewPrivacidad from './views/ViewPrivacidad';
 import ViewAdmin from './views/ViewAdmin';
+import ViewActua from './views/ViewActua';
+import AvisoInsignia from './educacion/AvisoInsignia';
 import AccesoRestringido from './components/AccesoRestringido';
 import { useAuth, ROLES } from './auth/AuthContext';
 import { admin as apiAdmin, getAreas, getEstadisticas, getFechas, getGeoJSON, normalizeArea } from './data/api';
 import './styles/cuentas.css';
+import './styles/educacion.css';
+import './styles/tema-claro.css';
+import './styles/marino.css';
+import FondoMarino from './components/FondoMarino';
 
 // Secciones que requieren una cuenta de investigador aprobada (o admin).
 const VISTAS_DATOS = new Set(['explorador', 'resumen']);
 
-const VISTAS = new Set(['inicio', 'corales', 'estres', 'indicadores', 'explorador', 'resumen', 'metodologia', 'acceso', 'registro', 'cuenta', 'admin', 'privacidad']);
+const VISTAS = new Set(['inicio', 'corales', 'estres', 'indicadores', 'actua', 'explorador', 'resumen', 'metodologia', 'acceso', 'registro', 'cuenta', 'admin', 'privacidad']);
 
 /**
  * Cada sección y cada consulta tienen su propia dirección, por ejemplo
@@ -219,6 +225,7 @@ export default function App() {
     corales: 'Conoce los Corales',
     estres: 'Estrés Térmico',
     indicadores: 'Indicadores NOAA',
+    actua: 'Cuida el arrecife',
     explorador: 'Explorador Térmico',
     resumen: 'Resumen del Territorio',
     metodologia: 'Metodología',
@@ -238,6 +245,7 @@ export default function App() {
     await logout();
     setView('inicio');
   }
+
 
   function renderVista() {
     if (VISTAS_DATOS.has(view) && !puedeVerDatos) {
@@ -275,6 +283,8 @@ export default function App() {
         );
       case 'resumen':
         return <ViewErrorBoundary><ViewResumen areas={areas} totalDates={dates.length} /></ViewErrorBoundary>;
+      case 'actua':
+        return <ViewErrorBoundary><ViewActua onNavigate={navigate} /></ViewErrorBoundary>;
       case 'metodologia':
         return <ViewMetodologia />;
       case 'acceso':
@@ -295,7 +305,7 @@ export default function App() {
 
   if (cargandoSesion) {
     return (
-      <div className="h-screen flex items-center justify-center" style={{ background: 'var(--ocean-900)' }}>
+      <div className="h-screen flex items-center justify-center zona-clara" style={{ background: 'var(--c-fondo)' }}>
         <LoadingState message="Cargando Coraleum..." />
       </div>
     );
@@ -304,7 +314,7 @@ export default function App() {
   // Contraseña temporal: nada más está disponible hasta cambiarla.
   if (usuario?.debe_cambiar_password) {
     return (
-      <div style={{ height: '100dvh', background: 'linear-gradient(145deg, #0f303a 0%, #123b45 100%)' }}>
+      <div className="zona-clara pantalla-completa">
         <CambioPasswordObligatorio />
       </div>
     );
@@ -313,19 +323,19 @@ export default function App() {
   // Cuentas sin la autorización vigente (Ley 1581): deben aceptarla primero.
   if (debeAceptarPolitica) {
     return (
-      <div style={{ height: '100dvh', background: 'linear-gradient(145deg, #0f303a 0%, #123b45 100%)' }}>
+      <div className="zona-clara pantalla-completa">
         <AceptarPoliticaObligatorio />
       </div>
     );
   }
 
   return (
-    <div className="flex" style={{ height: '100dvh', width: '100vw', overflow: 'hidden', background: '#eef8f7' }}>
+    <div className="flex" data-zona="clara" style={{ height: '100dvh', width: '100vw', overflow: 'hidden', background: '#eef8f7' }}>
       <Sidebar active={view} onNavigate={navigate} collapsed={collapsed} autenticado={autenticado} puedeVerDatos={puedeVerDatos} esAdmin={esAdmin} pendientes={pendientes} />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header
-          className="shrink-0 flex items-center gap-3 px-5"
+          className="app-header shrink-0 flex items-center gap-3 px-5"
           style={{ height: '52px', borderBottom: '1px solid rgba(35,113,122,0.12)', background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(12px)' }}
         >
           <button
@@ -381,12 +391,14 @@ export default function App() {
         )}
 
         <main
-          className="flex-1 min-h-0 overflow-hidden transition-opacity duration-200"
+          className={`flex-1 min-h-0 overflow-hidden transition-opacity duration-200 zona-clara`}
           style={{ background: 'linear-gradient(145deg, #eef8f7 0%, #e8f3f2 58%, #f6faf9 100%)' }}
           key={view}
         >
+          {view !== 'inicio' && <FondoMarino />}
           {renderVista()}
         </main>
+        <AvisoInsignia onNavigate={navigate} />
       </div>
     </div>
   );

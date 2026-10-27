@@ -195,3 +195,47 @@ Correcciones encontradas al revisar:
 
 Pruebas: `tests/test_pruebas_nuevas.py` (16 casos); en total 87 pruebas automáticas, más 28
 verificaciones en un navegador real (Chromium) para las pruebas 13 a 19.
+
+## Recorrido educativo (conciencia ambiental)
+
+- **El parque hoy** (Inicio): estado térmico del parque con la escala de alertas de NOAA Coral
+  Reef Watch, un coral por cada una de las 47 áreas y la curva del calor acumulado. Usa el nuevo
+  endpoint público `GET /estado-parque`, que solo entrega cifras agregadas (sin datos por área).
+- **Simulador de blanqueamiento** (Estrés Térmico): grados extra y semanas → DHW, nivel de alerta
+  y un coral que pierde color, se blanquea y se cubre de algas.
+- **Los corales de nuestro parque** (Conoce los Corales): cinco especies con presencia documentada
+  en el parque, su estado en la UICN y su fuente.
+- **Cuida el arrecife** (nueva sección): compromisos concretos, tarjeta para compartir con el
+  estado real del parque, cinco insignias y certificado de Guardián del arrecife.
+- Las insignias, los compromisos y el nombre del certificado se guardan solo en el navegador:
+  no se envían al servidor ni son datos personales tratados por Coraleum.
+
+## Tema claro "agua clara"
+
+- Fondo claro con superficies blancas (60 %), azul océano profundo en la barra lateral y los
+  títulos (30 %) y turquesa solo para botones y enlaces (10 %). El coral y los rojos quedan
+  reservados a datos y alertas.
+- Todos los textos cumplen contraste WCAG AA (mínimo 4,5:1).
+- El Explorador Térmico y el Resumen siguen en tema oscuro, donde los colores de alerta resaltan más.
+- Variables de color en `frontend/src/styles/tema-claro.css`.
+- Se corrigió un error en celulares: la portada de "Conoce los Corales" quedaba encimada porque
+  una regla general de estilos se aplicaba a todos los encabezados de la página.
+
+## Detalles marinos
+
+- Menú con un animal del arrecife por sección (tortuga, pez loro, caballito de mar, raya,
+  estrella de mar, pulpo, banco de peces, cangrejo, concha y tiburón), dibujados para Coraleum.
+- Fondo tenue en las páginas claras: luz del agua, un banco de peces, una tortuga y una raya que
+  nadan muy despacio, y la silueta del arrecife. Se detiene si el sistema pide reducir movimiento.
+- Arrecife al pie de la barra lateral y una ola entre la portada y "El parque hoy".
+- Nueva sección "Quién vive gracias al arrecife" (Conoce los Corales): seis animales del Caribe y
+  un interruptor "Arrecife vivo / Arrecife muerto" que muestra qué pierde cada uno.
+- "Quién vive gracias al arrecife" usa las ilustraciones del equipo (arrecife vivo y muerto) con
+  transición entre ambas; "Los corales de nuestro parque" usa las ilustraciones de las cinco especies
+  (recortadas, sin fondo de cuadros ni marcas de ejes). Imágenes optimizadas en WebP (`frontend/src/assets/arrecife/`).
+
+## Ajustes visuales (simulador e imágenes)
+
+- Nuevas ilustraciones, más nítidas, para *Acropora cervicornis* y *Orbicella annularis* en "Los corales de nuestro parque".
+- El simulador de blanqueamiento usa ahora una escena ilustrada del arrecife que pasa por cuatro etapas según el DHW: sano, pálido, blanqueado y cubierto de algas. Se añadieron indicadores sobre la imagen (temperatura, semanas, DHW).
+- Explorador Térmico y Resumen usan ahora el mismo tema claro que el resto de la app. Los números de datos usan tonos más oscuros (verde, ámbar, naranja, rojo) para leerse bien sobre blanco; las barras y el mapa conservan los colores de clasificación.

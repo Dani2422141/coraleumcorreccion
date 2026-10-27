@@ -50,11 +50,11 @@ main:before{content:"";position:absolute;inset:0;pointer-events:none;background:
 main>*{position:relative;z-index:1}
 
 /* ===== Header ===== */
-header{height:58px !important;padding-left:16px !important;padding-right:18px !important;background:rgba(15,48,58,.64) !important;border-bottom:1px solid rgba(220,247,243,.10) !important;box-shadow:0 8px 30px rgba(3,20,26,.12) !important;backdrop-filter:blur(24px) saturate(125%) !important;-webkit-backdrop-filter:blur(24px) saturate(125%) !important}
-header button{border:1px solid rgba(210,243,239,.13) !important;background:rgba(104,198,192,.08) !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.09) !important}
-header button:hover{background:rgba(104,198,192,.15) !important;border-color:rgba(104,230,220,.32) !important}
-header .header-date{margin-left:8px;padding:8px 12px;border-radius:999px;background:rgba(31,86,96,.45) !important;border:1px solid rgba(216,245,241,.14) !important;color:rgba(235,249,247,.78) !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 8px 24px rgba(4,27,33,.11) !important;backdrop-filter:blur(18px) !important}
-header .header-date strong{font-family:'Outfit',sans-serif !important;color:#eef9f7 !important}
+.app-header{height:58px !important;padding-left:16px !important;padding-right:18px !important;background:rgba(15,48,58,.64) !important;border-bottom:1px solid rgba(220,247,243,.10) !important;box-shadow:0 8px 30px rgba(3,20,26,.12) !important;backdrop-filter:blur(24px) saturate(125%) !important;-webkit-backdrop-filter:blur(24px) saturate(125%) !important}
+.app-header button{border:1px solid rgba(210,243,239,.13) !important;background:rgba(104,198,192,.08) !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.09) !important}
+.app-header button:hover{background:rgba(104,198,192,.15) !important;border-color:rgba(104,230,220,.32) !important}
+.app-header .header-date{margin-left:8px;padding:8px 12px;border-radius:999px;background:rgba(31,86,96,.45) !important;border:1px solid rgba(216,245,241,.14) !important;color:rgba(235,249,247,.78) !important;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 8px 24px rgba(4,27,33,.11) !important;backdrop-filter:blur(18px) !important}
+.app-header .header-date strong{font-family:'Outfit',sans-serif !important;color:#eef9f7 !important}
 
 /* ===== Sidebar ===== */
 #root>div>aside{background:rgba(13,45,55,.60) !important;border-right:1px solid rgba(218,246,242,.09) !important;box-shadow:10px 0 34px rgba(2,25,32,.14) !important;backdrop-filter:blur(24px) saturate(125%) !important;-webkit-backdrop-filter:blur(24px) saturate(125%) !important;overflow:hidden}
@@ -161,7 +161,7 @@ main svg text{font-family:'Outfit',sans-serif !important;fill:#c8dedb !important
 /* ===== Responsive ===== */
 @media(max-width:1100px){#root>div>aside[data-collapsed="false"]{width:196px !important}.home-content{padding-left:44px !important;padding-right:44px !important}.home-title{font-size:clamp(3.1rem,7vw,5.2rem) !important}}
 @media(max-width:900px){#root>div>aside[data-collapsed="false"]{width:64px !important}#root>div>aside[data-collapsed="true"]{width:64px !important}.home-content{padding:44px 28px 54px !important}.home-title{font-size:clamp(2.8rem,9vw,4.8rem) !important}.explorer-page{padding:18px 14px !important}.explorer-map-card{padding:8px !important}.map-selection-hint{display:none}}
-@media(max-width:640px){header{padding-left:10px !important;padding-right:10px !important}.home-content{padding:34px 20px 46px !important}.home-title{font-size:clamp(2.7rem,12vw,4.2rem) !important}.home-lead{font-size:.95rem !important}.home-stat{min-width:0;flex:1 1 130px}.date-control{width:100%;border-right:0;border-bottom:0;padding:0 0 0}.explorer-page aside.glass{display:none}}
+@media(max-width:640px){.app-header{padding-left:10px !important;padding-right:10px !important}.home-content{padding:34px 20px 46px !important}.home-title{font-size:clamp(2.7rem,12vw,4.2rem) !important}.home-lead{font-size:.95rem !important}.home-stat{min-width:0;flex:1 1 130px}.date-control{width:100%;border-right:0;border-bottom:0;padding:0 0 0}.explorer-page aside.glass{display:none}}
 
 /* ===== V11: Explorador + Detalle integrados ===== */
 .explorer-page{overflow-y:auto !important;overflow-x:hidden !important;padding-bottom:34px !important}

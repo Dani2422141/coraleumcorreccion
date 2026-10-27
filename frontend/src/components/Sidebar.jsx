@@ -1,89 +1,53 @@
+import AnimalMarino from './AnimalesMarinos';
 const NAV_ITEMS = [
   {
     id: 'inicio', label: 'Inicio',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-        <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
-      </svg>
-    ),
+    icon: <AnimalMarino nombre="tortuga" size={20} />,
   },
   {
     id: 'corales', label: 'Conoce los Corales', group: 'DESCUBRIR',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-      </svg>
-    ),
+    icon: <AnimalMarino nombre="pezLoro" size={20} />,
   },
   {
     id: 'estres', label: 'Estrés Térmico', group: 'COMPRENDER',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
-      </svg>
-    ),
+    icon: <AnimalMarino nombre="caballito" size={20} />,
   },
   {
     id: 'indicadores', label: 'Indicadores NOAA', group: 'ENTENDER',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
+    icon: <AnimalMarino nombre="raya" size={20} />,
+  },
+  {
+    id: 'actua', label: 'Cuida el arrecife', group: 'ACTUAR',
+    icon: <AnimalMarino nombre="estrella" size={20} />,
   },
   {
     id: 'explorador', label: 'Explorador Térmico', group: 'EXPLORAR', protegido: true,
-    icon: (
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-      </svg>
-    ),
+    icon: <AnimalMarino nombre="pulpo" size={20} />,
   },
   {
     id: 'resumen', label: 'Resumen', protegido: true,
-    icon: (
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-      </svg>
-    ),
+    icon: <AnimalMarino nombre="banco" size={20} />,
   },
   {
     id: 'metodologia', label: 'Metodología',
-    icon: (
-      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-      </svg>
-    ),
+    icon: <AnimalMarino nombre="cangrejo" size={20} />,
   },
 ];
 
 
 const ITEM_CUENTA = {
   id: 'cuenta', label: 'Mi cuenta', group: 'CUENTA',
-  icon: (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM3.5 17.5a6.5 6.5 0 0113 0" />
-    </svg>
-  ),
+  icon: <AnimalMarino nombre="concha" size={20} />,
 };
 
 const ITEM_ADMIN = {
   id: 'admin', label: 'Administración', group: 'CUENTA',
-  icon: (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10 2.5l6 2.5v4.5c0 4-2.6 6.9-6 8-3.4-1.1-6-4-6-8V5l6-2.5zM7.5 10l1.8 1.8 3.4-3.6" />
-    </svg>
-  ),
+  icon: <AnimalMarino nombre="tiburon" size={20} />,
 };
 
 const ITEM_ACCESO = {
   id: 'acceso', label: 'Iniciar sesión', group: 'CUENTA',
-  icon: (
-    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" className="w-4 h-4">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 3h4a2 2 0 012 2v10a2 2 0 01-2 2h-4M8 14l4-4-4-4M12 10H3" />
-    </svg>
-  ),
+  icon: <AnimalMarino nombre="concha" size={20} />,
 };
 
 export default function Sidebar({ active, onNavigate, collapsed, autenticado = false, puedeVerDatos = false, esAdmin = false, pendientes = 0 }) {
@@ -120,7 +84,7 @@ export default function Sidebar({ active, onNavigate, collapsed, autenticado = f
         {!collapsed && (
           <div>
             <div className="font-semibold text-sm leading-tight text-gradient-ocean">PNN Corales</div>
-            <div className="text-xs leading-tight" style={{ color: 'rgba(57,91,101,0.68)', fontSize: '10px' }}>del Rosario & San Bernardo</div>
+            <div className="text-xs leading-tight" style={{ color: 'rgba(216,238,236,0.72)', fontSize: '10px' }}>del Rosario & San Bernardo</div>
           </div>
         )}
       </div>
@@ -138,7 +102,7 @@ export default function Sidebar({ active, onNavigate, collapsed, autenticado = f
               {showGroup && (
                 <div className="px-3 pt-3 pb-1">
                   <span className="text-xs tracking-widest font-medium"
-                    style={{ color: 'rgba(10,143,139,0.62)', fontSize: '9px', letterSpacing: '0.14em' }}>
+                    style={{ color: 'rgba(143,226,217,0.78)', fontSize: '9px', letterSpacing: '0.14em' }}>
                     {item.group}
                   </span>
                 </div>
@@ -166,11 +130,26 @@ export default function Sidebar({ active, onNavigate, collapsed, autenticado = f
         })}
       </nav>
 
+      <div className="aside-arrecife" aria-hidden="true">
+        <svg viewBox="0 0 214 150" preserveAspectRatio="xMidYMax slice" fill="currentColor">
+          <path d="M0 150v-26c18-6 34 2 52-2s30-12 52-6 34 10 56 4 36-8 54-4v34Z" />
+          <g fill="none" stroke="currentColor" strokeWidth="7" strokeLinecap="round">
+            <path d="M40 128v-22m0 0-10-12V82m10 24 10-14V78" />
+            <path d="M150 126v-26m0 0-12-12V72m12 28 12-16V68m-24 20-8-8" />
+          </g>
+          <ellipse cx="96" cy="126" rx="20" ry="13" />
+          <ellipse cx="196" cy="128" rx="16" ry="11" />
+          <g fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round">
+            <path d="M12 140c-5-12 5-18 0-32M20 140c4-11-4-18 2-30" />
+          </g>
+        </svg>
+      </div>
+
       {/* Footer info */}
       {!collapsed && (
         <div className="px-4 py-3 shrink-0" style={{ borderTop: '1px solid rgba(35,113,122,0.10)' }}>
-          <div className="text-xs leading-tight mb-0.5" style={{ color: 'rgba(10,143,139,0.70)' }}>NOAA Coral Reef Watch</div>
-          <div className="text-xs" style={{ color: 'rgba(57,91,101,0.62)', fontSize: '10px' }}>
+          <div className="text-xs leading-tight mb-0.5" style={{ color: 'rgba(143,226,217,0.9)' }}>NOAA Coral Reef Watch</div>
+          <div className="text-xs" style={{ color: 'rgba(216,238,236,0.7)', fontSize: '10px' }}>
             47 áreas · 20 píxeles · 5 km
           </div>
           <button type="button" className="enlace" style={{ fontSize: '10.5px', marginTop: 6 }} onClick={() => onNavigate('privacidad')}>

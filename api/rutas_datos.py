@@ -8,6 +8,7 @@ botones en la interfaz.
 import ast
 import csv
 import json
+import time
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -271,3 +272,87 @@ def estadisticas_publicas():
         "total_pixeles": len({p for pixeles in pixeles_por_area.values() for p in pixeles}),
         "total_fechas": len(fechas),
     }
+
+
+# ------------------------------------------------------------
+# "El parque hoy" (público): solo cifras AGREGADAS de todo el parque,
+# sin datos por área. El detalle sigue siendo para investigadores.
+# ------------------------------------------------------------
+
+# Escala de alertas de NOAA Coral Reef Watch (versión de diciembre de 2023).
+NIVELES_NOAA = (
+    "sin_estres", "vigilancia", "advertencia",
+    "alerta_1", "alerta_2", "alerta_3", "alerta_4", "alerta_5",
+)
+
+
+def nivel_noaa(hotspot, dhw):
+    """Nivel de alerta de blanqueamiento.
+
+    Los niveles de alerta se asignan por el DHW acumulado (como el máximo de
+    7 días de NOAA, que mantiene la alerta aunque el HotSpot del día baje).
+    """
+    if dhw >= 20:
+        return "alerta_5"
+    if dhw >= 16:
+        return "alerta_4"
+    if dhw >= 12:
+        return "alerta_3"
+    if dhw >= 8:
+        return "alerta_2"
+    if dhw >= 4:
+        return "alerta_1"
+    if hotspot >= 1:
+        return "advertencia"
+    if hotspot > 0:
+        return "vigilancia"
+    return "sin_estres"
+
+
+_cache_parque = {"valor": None, "hasta": 0.0}
+
+
+@router_publico.get("/estado-parque")
+def estado_parque():
+    momento = time.monotonic()
+    if _cache_parque["valor"] is not None and momento < _cache_parque["hasta"]:
+        return _cache_parque["valor"]
+
+    fechas = obtener_fechas()
+    if not fechas:
+        return {"disponible": False}
+    ultima = fechas[-1]
+    areas = obtener_areas_por_fecha(ultima)
+    niveles = {clave: 0 for clave in NIVELES_NOAA}
+    for area in areas:
+        niveles[nivel_noaa(area["hotspot_promedio"], area["dhw_promedio"])] += 1
+
+    serie = []
+    pipeline = [
+        {"$group": {"_id": {"fecha": "$fecha", "pixel_id": "$pixel_id"}, "dhw": {"$avg": "$dhw"}, "sst": {"$avg": "$sst"}}},
+        {"$group": {"_id": "$_id.fecha", "dhw_promedio": {"$avg": "$dhw"}, "dhw_maximo": {"$max": "$dhw"}, "sst": {"$avg": "$sst"}}},
+        {"$sort": {"_id": 1}},
+    ]
+    for fila in coleccion.aggregate(pipeline):
+        serie.append(
+            {
+                "fecha": formatear_fecha(fila["_id"]),
+                "dhw_promedio": round(fila["dhw_promedio"], 2),
+                "dhw_maximo": round(fila["dhw_maximo"], 2),
+                "sst_promedio": round(fila["sst"], 2),
+            }
+        )
+
+    total = len(areas) or 1
+    valor = {
+        "disponible": True,
+        "fecha": formatear_fecha(ultima),
+        "total_areas": len(areas),
+        "niveles": niveles,
+        "dhw_promedio": round(sum(a["dhw_promedio"] for a in areas) / total, 2),
+        "dhw_maximo": round(max((a["dhw_max_asociado"] for a in areas), default=0), 2),
+        "sst_promedio": round(sum(a["sst_promedio"] for a in areas) / total, 2),
+        "serie": serie[-60:],
+    }
+    _cache_parque.update(valor=valor, hasta=momento + 300)
+    return valor

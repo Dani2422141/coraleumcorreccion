@@ -4,6 +4,13 @@ export const CLASSIFICATION_COLORS = {
   Alta: '#ff6b47',
 };
 
+// Versión oscura de cada color para TEXTO sobre fondo claro (contraste WCAG AA).
+export const CLASSIFICATION_TEXT = {
+  Baja: '#15803d',
+  Intermedia: '#8a5f00',
+  Alta: '#c2410c',
+};
+
 export const CLASSIFICATIONS = ['Baja', 'Intermedia', 'Alta'];
 
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -183,6 +190,10 @@ export const admin = {
   descargarSoporte: (id) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/soporte`, { comoBlob: true }),
   auditoria: (soloFallidos = false) => request(`${API_PREFIX}/admin/auditoria?limite=200${soloFallidos ? '&solo_fallidos=true' : ''}`),
 };
+
+export function getEstadoParque() {
+  return request(`${API_PREFIX}/estado-parque`);
+}
 
 export function getEstadisticas() {
   return request(`${API_PREFIX}/estadisticas`);

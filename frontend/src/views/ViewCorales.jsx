@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import CoralesDelParque from '../educacion/CoralesDelParque';
+import QuienViveEnElArrecife from '../educacion/QuienViveEnElArrecife';
+import { ganarInsignia } from '../educacion/progreso';
 
 const TOPICS = [
   {
@@ -85,12 +88,12 @@ const CHECKS = [
 ];
 
 const TONES = {
-  coral: { accent: '#ff8569', soft: 'rgba(255,133,105,.12)' },
-  turquoise: { accent: '#5fe0d4', soft: 'rgba(95,224,212,.12)' },
-  sky: { accent: '#78d7e7', soft: 'rgba(120,215,231,.12)' },
-  mint: { accent: '#9be5d9', soft: 'rgba(155,229,217,.12)' },
-  blue: { accent: '#9cc8dc', soft: 'rgba(156,200,220,.12)' },
-  gold: { accent: '#e6c76f', soft: 'rgba(230,199,111,.12)' },
+  coral: { accent: '#c84f2c', soft: 'rgba(200,79,44,.10)' },
+  turquoise: { accent: '#0b8580', soft: 'rgba(11,133,128,.10)' },
+  sky: { accent: '#1d7896', soft: 'rgba(29,120,150,.10)' },
+  mint: { accent: '#25876f', soft: 'rgba(37,135,111,.10)' },
+  blue: { accent: '#3c6886', soft: 'rgba(60,104,134,.10)' },
+  gold: { accent: '#9a6f0e', soft: 'rgba(154,111,14,.11)' },
 };
 
 function Icon({ type }) {
@@ -211,6 +214,11 @@ export default function ViewCorales() {
 
   const quizItem = CHECKS[quizIndex];
 
+  // Responder la última pregunta completa el desafío.
+  useEffect(() => {
+    if (quizAnswered && quizIndex === CHECKS.length - 1) ganarInsignia('quiz');
+  }, [quizAnswered, quizIndex]);
+
   const chooseOption = (index) => {
     if (quizAnswered) return;
     setSelectedOption(index);
@@ -298,6 +306,10 @@ export default function ViewCorales() {
             })}
           </div>
         </section>
+
+        <CoralesDelParque />
+
+        <QuienViveEnElArrecife />
 
         <section className="corales-v16-section corales-v16-recall corales-v21-game">
           <div className="corales-section-head-v15 corales-v17-section-head corales-v21-game-head">

@@ -1,0 +1,89 @@
+/* ============================================================
+   Detalles marinos: fondo animado de las páginas claras, arrecife
+   de la barra lateral, ola de la portada y "Quién vive gracias al
+   arrecife". Todo es tenue y lento para no cansar la vista.
+   ============================================================ */
+
+/* ---- Fondo de las páginas claras ---- */
+main.zona-clara{position:relative}
+.fondo-marino{position:absolute !important;inset:0;z-index:0 !important;overflow:hidden;pointer-events:none;color:var(--c-oceano)}
+.fm-luz{position:absolute;inset:0;background:
+  radial-gradient(600px 220px at 18% -40px,rgba(97,222,210,.16),transparent 70%),
+  radial-gradient(520px 200px at 70% -60px,rgba(97,222,210,.12),transparent 70%),
+  repeating-linear-gradient(105deg,rgba(255,255,255,0) 0 90px,rgba(255,255,255,.35) 90px 120px,rgba(255,255,255,0) 120px 240px);
+  mask-image:linear-gradient(180deg,#000,transparent 340px);-webkit-mask-image:linear-gradient(180deg,#000,transparent 340px);opacity:.7}
+.fm-banco{position:absolute;right:7%;top:92px;width:140px;height:70px;opacity:.09;animation:fm-banco 38s ease-in-out infinite alternate}
+.fm-banco span{position:absolute;animation:fm-bob 5s ease-in-out infinite;animation-delay:var(--d)}
+.fm-tortuga{position:absolute;right:4%;bottom:120px;opacity:.07;transform:rotate(-24deg);animation:fm-tortuga 70s ease-in-out infinite alternate}
+.fm-raya{position:absolute;left:3%;top:46%;opacity:.055;animation:fm-raya 54s ease-in-out infinite alternate}
+.fm-arrecife{position:absolute;left:0;right:0;bottom:0;width:100%;height:110px}
+.fm-arrecife path:first-child,.fm-arrecife ellipse{fill:rgba(14,74,92,.06)}
+.fm-arrecife g path{stroke:rgba(14,74,92,.07)}
+@keyframes fm-banco{from{transform:translate(0,0)}to{transform:translate(-120px,26px)}}
+@keyframes fm-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes fm-tortuga{from{transform:translate(0,0) rotate(-24deg)}to{transform:translate(-90px,-140px) rotate(-30deg)}}
+@keyframes fm-raya{from{transform:translate(0,0) rotate(8deg)}to{transform:translate(70px,-60px) rotate(2deg)}}
+
+/* Las páginas claras dejan ver el fondo */
+.zona-clara .corales-page-v17,.zona-clara .edu-actua,.zona-clara .inicio-scroll{background:transparent !important}
+.zona-clara .edu-parque{background:linear-gradient(180deg,rgba(255,255,255,.9) 0%,rgba(243,248,248,0) 60%) !important}
+
+/* ---- Arrecife al pie de la barra lateral ---- */
+#root>div[data-zona]>aside{position:relative}
+.aside-arrecife{position:absolute;left:0;right:0;bottom:0;height:150px;pointer-events:none;z-index:0;color:rgba(143,226,217,.06)}
+.aside-arrecife svg{width:100%;height:100%}
+#root>div[data-zona]>aside>*:not(.aside-arrecife){position:relative;z-index:1}
+
+/* ---- Ola entre la portada y "El parque hoy" ---- */
+.home-ola{position:absolute;left:0;right:0;bottom:-1px;width:100%;height:70px;z-index:2;pointer-events:none}
+.home-ola path{fill:var(--c-fondo)}
+.home-ola path.home-ola-2{fill:rgba(97,222,210,.28)}
+
+/* ---- Iconos del menú ---- */
+#root>div[data-zona]>aside nav .nav-item svg{transition:transform .25s ease}
+#root>div[data-zona]>aside nav .nav-item:hover svg{transform:translateX(2px) rotate(-4deg)}
+#root>div[data-zona]>aside nav .nav-item-active svg{color:#8ff0e6}
+
+/* ---- Quién vive gracias al arrecife ---- */
+.eco{margin:64px 0 8px}
+.eco-cabecera{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;margin-bottom:22px}
+.eco-cabecera p{max-width:66ch;margin:0;font-size:15px;line-height:1.7;color:var(--c-texto-2)}
+.eco-cabecera a{color:var(--c-acento)}
+.eco-interruptor{display:inline-flex;padding:4px;border-radius:999px;background:var(--c-superficie);border:1px solid var(--c-linea);box-shadow:var(--c-sombra)}
+.eco-interruptor button{padding:9px 16px;border-radius:999px;border:0;background:transparent;color:var(--c-texto-2);font:600 13px 'Outfit',sans-serif;cursor:pointer;transition:background .25s,color .25s}
+.eco-interruptor button.is-activo{background:var(--c-boton);color:#fff}
+.eco-interruptor button.is-activo.is-muerto{background:#6b6f6a}
+.eco-interruptor button:focus-visible{outline:2px solid var(--c-boton);outline-offset:2px}
+
+.eco-escena{position:relative;aspect-ratio:1424/751;max-height:620px;width:100%;border-radius:26px;overflow:hidden;background:#0d4a5a;box-shadow:0 20px 44px rgba(15,52,64,.18)}
+.eco-imagen{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:opacity 1.2s ease,transform 8s ease}
+.eco-imagen-vivo{opacity:1}
+.eco-imagen-muerto{opacity:0;transform:scale(1.03)}
+.eco-escena.is-muerto .eco-imagen-vivo{opacity:0}
+.eco-escena.is-muerto .eco-imagen-muerto{opacity:1;transform:scale(1)}
+.eco-agua{position:absolute;inset:0;background:repeating-linear-gradient(100deg,rgba(255,255,255,0) 0 70px,rgba(255,255,255,.16) 70px 96px,rgba(255,255,255,0) 96px 200px);mask-image:linear-gradient(180deg,#000,transparent 70%);-webkit-mask-image:linear-gradient(180deg,#000,transparent 70%)}
+.eco-arrecife{position:absolute;left:0;right:0;bottom:0;width:100%;height:92%}
+.eco-animal{position:absolute;z-index:2;filter:drop-shadow(0 4px 8px rgba(4,40,48,.25));transition:opacity .9s ease,transform 1.4s ease;transition-delay:calc(var(--i) * 70ms);animation:eco-nada 6s ease-in-out infinite;animation-delay:calc(var(--i) * -1.1s)}
+.eco-escena.is-muerto .eco-animal{opacity:0;transform:translate(140px,-40px)}
+.eco-escena.is-muerto .eco-animal:nth-child(odd){transform:translate(-140px,-30px)}
+@keyframes eco-nada{0%,100%{translate:0 0}50%{translate:6px -6px}}
+.eco-escena-texto{position:absolute;left:18px;bottom:16px;right:18px;z-index:3;margin:0;padding:10px 14px;border-radius:14px;background:rgba(7,40,48,.62);color:#f2fbf9;font-size:14px;line-height:1.45;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);max-width:560px}
+
+.eco-lista{list-style:none;margin:22px 0 0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.eco-tarjeta{display:flex;gap:14px;align-items:flex-start;padding:16px;border-radius:18px;background:var(--c-superficie);border:1px solid var(--c-linea);box-shadow:var(--c-sombra);transition:background .6s,border-color .6s}
+.eco-tarjeta-icono{display:grid;place-items:center;width:56px;height:56px;flex-shrink:0;border-radius:16px;transition:filter .6s}
+.eco-tarjeta strong{display:block;font:600 15px/1.3 'Outfit',sans-serif;color:var(--c-texto)}
+.eco-tarjeta em{display:block;font:italic 400 12.5px 'Fraunces',Georgia,serif;color:var(--c-texto-3)}
+.eco-tarjeta p{margin:8px 0 0;font-size:13.5px;line-height:1.55;color:var(--c-texto-2)}
+.eco-tarjeta.is-muerto{background:#f4f2ee;border-color:#ddd8cf}
+.eco-tarjeta.is-muerto .eco-tarjeta-icono{filter:grayscale(1) opacity(.55)}
+.eco-tarjeta.is-muerto p{color:#7a3a22}
+.eco-fuentes{margin:14px 0 0;font-size:12.5px;color:var(--c-texto-3)}
+.eco-fuentes a{color:var(--c-acento)}
+
+@media (max-width:1000px){.eco-lista{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.eco-lista{grid-template-columns:1fr}.eco-escena-texto{font-size:12.5px}.fm-tortuga,.fm-raya{display:none}}
+@media (prefers-reduced-motion:reduce){
+  .fm-banco,.fm-banco span,.fm-tortuga,.fm-raya,.eco-animal{animation:none !important}
+  .eco-imagen{transition:none}
+}

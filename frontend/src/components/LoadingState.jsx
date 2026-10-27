@@ -5,7 +5,7 @@ export function LoadingState({ message = 'Cargando datos...' }) {
         <div className="absolute inset-0 rounded-full border-2 border-transparent animate-spin" style={{ borderTopColor: '#00c4b4' }} />
         <div className="absolute inset-1 rounded-full border-2 border-transparent animate-spin" style={{ borderBottomColor: 'rgba(0,196,180,0.4)', animationDuration: '1.4s' }} />
       </div>
-      <p className="text-sm font-mono" style={{ color: 'rgba(0,196,180,0.6)' }}>{message}</p>
+      <p className="text-sm font-mono" style={{ color: 'var(--c-acento)' }}>{message}</p>
     </div>
   );
 }
@@ -18,7 +18,7 @@ export function ErrorState({ message = 'No fue posible obtener los datos.' }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       </div>
-      <p className="text-sm" style={{ color: 'rgba(255,107,71,0.8)' }}>{message}</p>
+      <p className="text-sm" style={{ color: 'var(--c-coral-texto)' }}>{message}</p>
     </div>
   );
 }
@@ -31,7 +31,7 @@ export function EmptyState({ message = 'Sin datos disponibles' }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
         </svg>
       </div>
-      <p className="text-sm" style={{ color: 'rgba(168,212,224,0.5)' }}>{message}</p>
+      <p className="text-sm" style={{ color: 'var(--c-texto-3)' }}>{message}</p>
     </div>
   );
 }

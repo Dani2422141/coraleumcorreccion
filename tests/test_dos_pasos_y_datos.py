@@ -244,3 +244,29 @@ def test_login_2fa_helper_con_admin(crear_cliente, admin):
     from tests.conftest import SECRETO_ADMIN
     otro = crear_cliente()
     assert login_2fa(otro, "admin@coraleum.org", PASSWORD_ADMIN, SECRETO_ADMIN, desfase=1).status_code == 200
+
+
+def test_estado_del_parque_es_publico_y_solo_agregado(cliente):
+    from api import rutas_datos
+
+    rutas_datos._cache_parque.update(valor=None, hasta=0.0)
+    r = cliente.get("/estado-parque")
+    assert r.status_code == 200
+    datos = r.json()
+    assert datos["disponible"] is True and datos["total_areas"] == 47
+    assert sum(datos["niveles"].values()) == 47
+    assert len(datos["serie"]) >= 2
+    # Sin detalle por área (eso es solo para investigadores).
+    assert "fid_area_coralina" not in r.text and "areas" not in datos
+
+
+def test_niveles_noaa():
+    from api.rutas_datos import nivel_noaa
+
+    assert nivel_noaa(0, 0) == "sin_estres"
+    assert nivel_noaa(0.5, 0) == "vigilancia"
+    assert nivel_noaa(1.2, 2) == "advertencia"
+    assert nivel_noaa(1.2, 4) == "alerta_1"
+    assert nivel_noaa(0.3, 8.2) == "alerta_2"
+    assert nivel_noaa(1, 12.6) == "alerta_3"
+    assert nivel_noaa(1, 21) == "alerta_5"

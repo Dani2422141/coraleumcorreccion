@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CLASSIFICATION_COLORS, getArea } from '../data/api';
+import { CLASSIFICATION_TEXT, getArea } from '../data/api';
 import { LoadingState, ErrorState } from '../components/LoadingState';
 
 function DHWSummary({ value }) {
@@ -7,7 +7,7 @@ function DHWSummary({ value }) {
   const safe = Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
   const max = 8;
   const pct = Math.min(100, (safe / max) * 100);
-  const color = safe < 3.57 ? '#4ade80' : safe < 4.74 ? '#fbbf24' : '#ff6b47';
+  const color = safe < 3.57 ? '#15803d' : safe < 4.74 ? '#8a5f00' : '#c2410c';
   const label = safe < 3.57 ? 'Baja' : safe < 4.74 ? 'Intermedia' : 'Alta';
 
   return (
@@ -28,7 +28,7 @@ function DHWSummary({ value }) {
         <div className="dhw-summary-zone dhw-summary-zone-low" />
         <div className="dhw-summary-zone dhw-summary-zone-mid" />
         <div className="dhw-summary-zone dhw-summary-zone-high" />
-        <div className="dhw-summary-marker" style={{ left: `${pct}%`, background: color, borderColor: '#eafaf7' }} />
+        <div className="dhw-summary-marker" style={{ left: `${pct}%`, background: color, borderColor: '#ffffff' }} />
       </div>
 
       <div className="dhw-summary-scale">
@@ -68,27 +68,27 @@ export default function ViewDetalle({ area, fecha = null, onGoHistorico, onBack,
   if (loading && !detail) return <LoadingState message="Cargando ficha del área..." />;
   if (!detail) return <ErrorState message={error || 'Área no disponible.'} />;
 
-  const catColor = CLASSIFICATION_COLORS[detail.classification] || '#00c4b4';
+  const catColor = CLASSIFICATION_TEXT[detail.classification] || '#0a6f6b';
   const metrics = [
-    { label: 'DHW Máximo', value: detail.dhwMax, unit: '°C-sem', color: '#ff6b47' },
-    { label: 'Píxeles NOAA', value: detail.pixels, unit: 'px', color: '#00c4b4' },
-    { label: 'SST Promedio', value: detail.sstAvg, unit: '°C', color: '#40e0d0' },
-    { label: 'SSTA Promedio', value: detail.sstaAvg, unit: '°C', color: '#fbbf24' },
-    { label: 'HotSpot Prom.', value: detail.hotspotAvg, unit: '°C', color: '#f97316' },
+    { label: 'DHW Máximo', value: detail.dhwMax, unit: '°C-sem', color: '#b42318' },
+    { label: 'Píxeles NOAA', value: detail.pixels, unit: 'px', color: '#0a6f6b' },
+    { label: 'SST Promedio', value: detail.sstAvg, unit: '°C', color: '#0a7f86' },
+    { label: 'SSTA Promedio', value: detail.sstaAvg, unit: '°C', color: '#8a5f00' },
+    { label: 'HotSpot Prom.', value: detail.hotspotAvg, unit: '°C', color: '#c2410c' },
     { label: 'Clasificación', value: detail.classification, unit: '', color: catColor },
   ];
 
   return (
     <div className={embedded ? 'detail-embedded' : 'h-full overflow-y-auto px-8 py-6'}>
       <div className={embedded ? '' : 'max-w-4xl mx-auto'}>
-        {!embedded && <button onClick={onBack} className="flex items-center gap-1.5 text-xs mb-3 transition-colors" style={{ color: 'rgba(0,196,180,0.55)' }}>← Explorador térmico</button>}
+        {!embedded && <button onClick={onBack} className="flex items-center gap-1.5 text-xs mb-3 transition-colors" style={{ color: 'var(--c-acento)' }}>← Explorador térmico</button>}
         <div className="flex items-start justify-between gap-4 mb-4 flex-wrap">
           <div>
-            <span className="font-mono text-xs" style={{ color: 'rgba(194,231,231,.42)' }}>FID {detail.fid}</span>
-            <h2 className={embedded ? 'font-display text-2xl md:text-3xl font-light mt-1' : 'font-display text-4xl font-light mt-1'} style={{ color: '#e8f4f8' }}>
+            <span className="font-mono text-xs" style={{ color: 'var(--c-texto-3)' }}>FID {detail.fid}</span>
+            <h2 className={embedded ? 'font-display text-2xl md:text-3xl font-light mt-1' : 'font-display text-4xl font-light mt-1'} style={{ color: 'var(--c-texto)' }}>
               Área <span className="text-gradient-ocean italic">coralina</span>
             </h2>
-            <p className="text-xs md:text-sm mt-1" style={{ color: 'rgba(194,231,231,.62)' }}>{detail.label || 'Áreas coralinas'} · datos {detail.fecha || '—'}</p>
+            <p className="text-xs md:text-sm mt-1" style={{ color: 'var(--c-texto-2)' }}>{detail.label || 'Áreas coralinas'} · datos {detail.fecha || '—'}</p>
           </div>
           <div className="px-3 py-1.5 rounded-full text-xs font-mono" style={{ color: catColor, background: `${catColor}12`, border: `1px solid ${catColor}35` }}>{detail.classification}</div>
         </div>
@@ -102,7 +102,7 @@ export default function ViewDetalle({ area, fecha = null, onGoHistorico, onBack,
           <div className="detail-metric-grid">
             {metrics.map(({ label, value, unit, color }) => (
               <div key={label} className="detail-metric-card">
-                <div className="text-xs mb-1" style={{ color: 'rgba(194,231,231,.58)' }}>{label}</div>
+                <div className="text-xs mb-1" style={{ color: 'var(--c-texto-2)' }}>{label}</div>
                 <div className="font-mono text-base font-bold" style={{ color }}>
                   {typeof value === 'number' ? value.toFixed(2) : value}{unit && <span className="text-xs ml-1 font-normal" style={{ opacity: .65 }}>{unit}</span>}
                 </div>
@@ -112,8 +112,8 @@ export default function ViewDetalle({ area, fecha = null, onGoHistorico, onBack,
         </div>
 
         <div className="detail-note">
-          <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="#00c4b4"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0" /></svg>
-          <p className="text-xs" style={{ color: 'rgba(194,231,231,.68)', lineHeight: 1.7 }}>La categoría <strong style={{ color: catColor }}>{detail.classification}</strong> es una clasificación <strong>relativa</strong> al conjunto de áreas analizadas y no corresponde a categorías oficiales de alerta NOAA.</p>
+          <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="#0a6f6b"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0" /></svg>
+          <p className="text-xs" style={{ color: 'var(--c-texto-2)', lineHeight: 1.7 }}>La categoría <strong style={{ color: catColor }}>{detail.classification}</strong> es una clasificación <strong>relativa</strong> al conjunto de áreas analizadas y no corresponde a categorías oficiales de alerta NOAA.</p>
         </div>
 
         {onGoHistorico && <button onClick={onGoHistorico} className="detail-history-button">Ver evolución histórica →</button>}

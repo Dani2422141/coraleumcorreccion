@@ -1,13 +1,14 @@
 import { useState } from 'react';
+import Simulador from '../educacion/Simulador';
 
 const STAGES = [
-  { label: 'Condiciones normales', temp: '28°C', tempColor: '#40e0d0', coralColor: '#ff6b47',
+  { label: 'Condiciones normales', temp: '28°C', tempColor: '#0e8f88', coralColor: '#c8452c',
     description: 'El arrecife en equilibrio: agua a 28°C, zooxantelas fotosintéticas activas. Las algas simbióticas producen el 90% de la energía del coral.' },
-  { label: 'Aumento de temperatura', temp: '30°C', tempColor: '#fbbf24', coralColor: '#ffaa44',
+  { label: 'Aumento de temperatura', temp: '30°C', tempColor: '#b7791f', coralColor: '#ffaa44',
     description: 'La temperatura sube 1–2°C sobre el promedio histórico durante semanas. El pólipo empieza a estresarse y las zooxantelas producen radicales libres.' },
-  { label: 'Estrés térmico', temp: '31°C', tempColor: '#f97316', coralColor: '#ffddaa',
+  { label: 'Estrés térmico', temp: '31°C', tempColor: '#d0611c', coralColor: '#ffddaa',
     description: 'Con DHW > 4°C-semanas el coral expulsa activamente a sus algas simbióticas. Es un mecanismo de defensa, pero queda sin su fuente principal de energía.' },
-  { label: 'Blanqueamiento', temp: '32°C+', tempColor: '#ff6b47', coralColor: '#e8e8e8',
+  { label: 'Blanqueamiento', temp: '32°C+', tempColor: '#c8452c', coralColor: '#e8e8e8',
     description: 'Sin zooxantelas, el tejido se vuelve transparente revelando el esqueleto blanco. Si el estrés persiste el coral muere; si bajan las temperaturas a tiempo, puede recuperarse.' },
 ];
 
@@ -26,7 +27,7 @@ function CoralPolyp({ color, pulseColor }) {
         <circle cx="50" cy="34" r="5" fill={color} opacity="0.9" />
         {color !== '#e8e8e8' && [41, 44, 47, 50, 53, 56].map((x, i) => (
           <circle key={i} cx={x} cy={52 + (i % 2) * 4} r="2"
-            fill="#40e0d0" opacity={color === '#ffddaa' ? 0.25 : 0.65} />
+            fill="#0e8f88" opacity={color === '#ffddaa' ? 0.25 : 0.65} />
         ))}
       </svg>
     </div>
@@ -42,11 +43,11 @@ export default function ViewEstres() {
       <div className="max-w-5xl mx-auto">
         <div className="mb-6">
           <span className="text-xs tracking-widest uppercase font-medium mb-2 block"
-            style={{ color: 'rgba(249,115,22,0.75)' }}>Ciencia del cambio climático</span>
-          <h2 className="font-display text-4xl font-light mb-2" style={{ color: '#e8f4f8' }}>
-            El <span className="italic" style={{ color: '#f97316' }}>Estrés Térmico</span> en el arrecife
+            style={{ color: 'var(--c-coral-texto)' }}>Ciencia del cambio climático</span>
+          <h2 className="font-display text-4xl font-light mb-2" style={{ color: 'var(--c-texto)' }}>
+            El <span className="italic" style={{ color: '#d0611c' }}>Estrés Térmico</span> en el arrecife
           </h2>
-          <p className="text-sm max-w-xl" style={{ color: 'rgba(168,212,224,0.55)', lineHeight: 1.7 }}>
+          <p className="text-sm max-w-xl" style={{ color: 'var(--c-texto-2)', lineHeight: 1.7 }}>
             Selecciona cada etapa para ver cómo el aumento de temperatura transforma un arrecife vivo en un cementerio de esqueletos blancos.
           </p>
         </div>
@@ -60,8 +61,8 @@ export default function ViewEstres() {
                 onClick={() => setActive(i)}
                 className="flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all duration-200"
                 style={{
-                  background: active === i ? `${s.tempColor}12` : 'rgba(4,22,40,0.55)',
-                  border: `1px solid ${active === i ? s.tempColor + '40' : 'rgba(0,196,180,0.08)'}`,
+                  background: active === i ? `${s.tempColor}12` : 'var(--c-superficie)',
+                  border: `1px solid ${active === i ? s.tempColor + '40' : 'var(--c-linea)'}`,
                   minWidth: '175px',
                 }}
               >
@@ -69,9 +70,9 @@ export default function ViewEstres() {
                   style={{ background: s.tempColor, opacity: active === i ? 1 : 0.35 }} />
                 <div>
                   <div className="text-xs font-medium leading-tight"
-                    style={{ color: active === i ? s.tempColor : 'rgba(168,212,224,0.5)' }}>{s.label}</div>
+                    style={{ color: active === i ? s.tempColor : 'var(--c-texto-3)' }}>{s.label}</div>
                   <div className="font-mono text-xs mt-0.5"
-                    style={{ color: active === i ? s.tempColor : 'rgba(168,212,224,0.28)' }}>{s.temp}</div>
+                    style={{ color: active === i ? s.tempColor : 'var(--c-texto-3)' }}>{s.temp}</div>
                 </div>
               </button>
             ))}
@@ -85,8 +86,8 @@ export default function ViewEstres() {
               <div className="font-mono text-5xl font-bold mb-1" style={{ color: stage.tempColor }}>
                 {stage.temp}
               </div>
-              <h3 className="font-display text-xl font-semibold mb-3" style={{ color: '#e8f4f8' }}>{stage.label}</h3>
-              <p className="text-sm leading-relaxed" style={{ color: 'rgba(168,212,224,0.8)', lineHeight: 1.8 }}>
+              <h3 className="font-display text-xl font-semibold mb-3" style={{ color: 'var(--c-texto)' }}>{stage.label}</h3>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--c-texto)', lineHeight: 1.8 }}>
                 {stage.description}
               </p>
               {/* Progress */}
@@ -96,30 +97,14 @@ export default function ViewEstres() {
                     style={{ background: i <= active ? stage.tempColor : 'rgba(0,196,180,0.1)' }} />
                 ))}
               </div>
-              <div className="flex justify-between text-xs mt-1 font-mono" style={{ color: 'rgba(168,212,224,0.3)' }}>
+              <div className="flex justify-between text-xs mt-1 font-mono" style={{ color: 'var(--c-texto-3)' }}>
                 <span>Normal</span><span>Blanqueamiento</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* DHW scale */}
-        <div className="glass rounded-xl p-4 mt-5">
-          <div className="text-xs mb-2 font-medium" style={{ color: 'rgba(168,212,224,0.5)' }}>
-            Escala DHW — Degree Heating Weeks
-          </div>
-          <div className="flex rounded-md overflow-hidden h-2 mb-1.5">
-            {['#40e0d0','#7fffd4','#fbbf24','#f97316','#ff6b47','#dc2626'].map((c, i) => (
-              <div key={i} className="flex-1" style={{ background: c }} />
-            ))}
-          </div>
-          <div className="flex justify-between text-xs font-mono" style={{ color: 'rgba(168,212,224,0.3)' }}>
-            <span>0</span><span>2</span><span>4</span><span>6</span><span>8</span><span>12+ °C-sem</span>
-          </div>
-          <div className="flex justify-between text-xs mt-1" style={{ color: 'rgba(168,212,224,0.25)' }}>
-            <span>Sin estrés</span><span>Blanqueamiento posible</span><span>Mortalidad masiva</span>
-          </div>
-        </div>
+        <Simulador />
       </div>
     </div>
   );

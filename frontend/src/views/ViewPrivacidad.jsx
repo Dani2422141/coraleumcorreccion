@@ -21,8 +21,8 @@ const RESPONSABLE = {
 function Seccion({ titulo, children }) {
   return (
     <section style={{ marginBottom: 18 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 600, color: '#eaf8f7', margin: '0 0 6px' }}>{titulo}</h3>
-      <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'rgba(214,238,235,.86)' }}>{children}</div>
+      <h3 style={{ fontSize: 15, fontWeight: 600, color: 'var(--c-texto)', margin: '0 0 6px' }}>{titulo}</h3>
+      <div style={{ fontSize: 13.5, lineHeight: 1.7, color: 'var(--c-texto-2)' }}>{children}</div>
     </section>
   );
 }
