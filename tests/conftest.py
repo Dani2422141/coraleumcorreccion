@@ -30,12 +30,30 @@ pymongo.MongoClient = mongomock.MongoClient
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-from api import db, limites  # noqa: E402
+import pyotp  # noqa: E402
+
+from api import db, dos_pasos, limites  # noqa: E402
 from api.main import app  # noqa: E402
 from api.seguridad import ahora, hash_password  # noqa: E402
 
 CSRF = {"X-Requested-With": "Coraleum"}
 PASSWORD_ADMIN = "Arrecife-Admin-2026!"
+SECRETO_ADMIN = pyotp.random_base32()
+
+
+def codigo_actual(secreto, desfase=0):
+    paso = int(ahora().timestamp()) // 30 + desfase
+    return pyotp.TOTP(secreto).generate_otp(paso)
+
+
+def login_2fa(c, email, password, secreto, desfase=0):
+    r = login(c, email, password)
+    assert r.status_code == 200 and r.json().get("requiere_2fa"), r.text
+    return c.post(
+        "/auth/2fa/verificar",
+        json={"desafio": r.json()["desafio"], "codigo": codigo_actual(secreto, desfase)},
+        headers=CSRF,
+    )
 
 
 def _cargar_observaciones():
@@ -91,8 +109,12 @@ def crear_cliente():
         c.close()
 
 
-def registrar(c, email="ana@ejemplo.org", nombre="Ana Pérez", password="Coral-Seguro-2026"):
-    return c.post("/auth/registro", json={"nombre": nombre, "email": email, "password": password}, headers=CSRF)
+def registrar(c, email="ana@ejemplo.org", nombre="Ana Pérez", password="Coral-Seguro-2026", acepta=True):
+    return c.post(
+        "/auth/registro",
+        json={"nombre": nombre, "email": email, "password": password, "acepta_politica": acepta},
+        headers=CSRF,
+    )
 
 
 def login(c, email, password):
@@ -115,8 +137,14 @@ def admin(crear_cliente):
             "bloqueado_hasta": None,
             "solicitud": None,
             "creado_en": ahora(),
+            "dos_pasos": {
+                "activo": True,
+                "secreto": dos_pasos.cifrar(SECRETO_ADMIN),
+                "ultimo_paso": None,
+                "recuperacion": [],
+            },
         }
     )
     c = crear_cliente()
-    assert login(c, "admin@coraleum.org", PASSWORD_ADMIN).status_code == 200
+    assert login_2fa(c, "admin@coraleum.org", PASSWORD_ADMIN, SECRETO_ADMIN).status_code == 200
     return c

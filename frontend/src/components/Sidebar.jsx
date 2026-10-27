@@ -173,6 +173,9 @@ export default function Sidebar({ active, onNavigate, collapsed, autenticado = f
           <div className="text-xs" style={{ color: 'rgba(57,91,101,0.62)', fontSize: '10px' }}>
             47 áreas · 20 píxeles · 5 km
           </div>
+          <button type="button" className="enlace" style={{ fontSize: '10.5px', marginTop: 6 }} onClick={() => onNavigate('privacidad')}>
+            Política de datos personales
+          </button>
         </div>
       )}
     </aside>

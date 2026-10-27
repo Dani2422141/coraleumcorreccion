@@ -257,15 +257,66 @@ debe crear una nueva antes de usar la aplicación.
 
 Con HTTPS en producción, pon `COOKIE_SECURE=true` en `.env` y agrega el dominio a `CORS_ORIGINS`.
 
-## 8. Pruebas automáticas
+### Verificación en dos pasos (2FA)
+
+Obligatoria para administradores: al entrar a **Administración** por primera vez
+se pide activarla escaneando un código QR con Google Authenticator, Microsoft
+Authenticator o Authy. Se entregan 8 códigos de recuperación de un solo uso.
+Para el resto de cuentas es opcional, desde **Mi cuenta**.
+
+Si alguien pierde el celular y los códigos, otro administrador puede quitarle la
+2FA en **Administración → Usuarios → Quitar 2FA**.
+
+## 8. Protección de datos personales (Ley 1581 de 2012)
+
+- El registro exige aceptar la **política de tratamiento de datos** (casilla obligatoria).
+  Se guarda la prueba del consentimiento: versión, fecha, IP y medio.
+- Las cuentas creadas antes, o cuando cambia la política, deben aceptarla al iniciar sesión.
+- En **Mi cuenta** cada persona puede **descargar sus datos** (JSON) y **eliminar su cuenta**.
+  Al eliminarla se borran sus datos y su registro de auditoría queda anónimo.
+- La política está en `frontend/src/views/ViewPrivacidad.jsx`. **Antes de publicar,
+  completen los campos marcados `[COMPLETAR]`** (dirección, correo y teléfono de contacto).
+  Si cambian el texto, suban la versión en `POLITICA_VERSION` (`api/config.py`) y en
+  `VERSION` (`ViewPrivacidad.jsx`).
+
+## 9. Copias de seguridad
+
+Con Docker encendido y el entorno virtual activo:
+
+```bash
+python scripts/respaldo_mongodb.py respaldar            # crea y verifica una copia
+python scripts/respaldo_mongodb.py listar
+python scripts/respaldo_mongodb.py verificar ARCHIVO
+python scripts/respaldo_mongodb.py restaurar ARCHIVO    # pide escribir RESTAURAR
+```
+
+Las copias quedan en `respaldos/` (excluida de Git) con su huella SHA-256. Se conservan
+las últimas 14. **Contienen datos personales: guárdenlas en un lugar privado.**
+
+Para programarla todos los días a las 11 p. m. en Windows (ajuste la ruta si el
+proyecto no está en `C:\Proyectos\Coraleum`; la ruta no debe tener espacios):
+
+```powershell
+schtasks /Create /SC DAILY /ST 23:00 /TN "Coraleum respaldo" /TR "C:\Proyectos\Coraleum\.venv\Scripts\python.exe C:\Proyectos\Coraleum\scripts\respaldo_mongodb.py respaldar"
+```
+
+Docker Desktop debe estar abierto a esa hora. Para quitar la tarea:
+`schtasks /Delete /TN "Coraleum respaldo" /F`.
+
+## 10. Pruebas automáticas y revisión de seguridad
 
 ```bash
 pip install -r requirements-dev.txt
-pytest
+pytest                                   # 48 pruebas; no necesitan Docker
+pip install pip-audit bandit
+pip-audit -r api/requirements.txt        # vulnerabilidades en librerías de Python
+bandit -r api scripts -ll                # análisis estático del código
+cd frontend && npm audit                 # vulnerabilidades en librerías del frontend
 ```
 
-28 pruebas de autenticación, roles y protecciones; usan una base de datos
-simulada, no necesitan Docker.
+En GitLab, `.gitlab-ci.yml` ejecuta todo esto automáticamente en cada `push`, más
+**Gitleaks** (busca contraseñas o claves subidas por error en todo el historial) y la
+verificación SHA-256 del histórico.
 
 ## Nota sobre la clasificación
 

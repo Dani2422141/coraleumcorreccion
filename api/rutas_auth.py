@@ -3,12 +3,13 @@ perfil, cambio de contraseña y solicitud de acceso como investigador."""
 
 import uuid
 from datetime import timedelta
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from pymongo.errors import DuplicateKeyError
 
-from api import auditoria, config, db
+from api import auditoria, config, db, dos_pasos
 from api.deps import (
     proteger_csrf,
     requerir_sesion,
@@ -17,6 +18,8 @@ from api.deps import (
     usuario_publico,
 )
 from api.limites import verificar_limite
+from bson import ObjectId
+from bson.errors import InvalidId
 from api.seguridad import (
     a_utc,
     ahora,
@@ -48,6 +51,8 @@ class Registro(_Base):
     nombre: str = Field(min_length=2, max_length=80)
     email: EmailStr = Field(max_length=254)
     password: str = Field(min_length=1, max_length=256)
+    # Autorización expresa para el tratamiento de datos (Ley 1581 de 2012).
+    acepta_politica: bool
 
     @field_validator("nombre")
     @classmethod
@@ -65,6 +70,30 @@ class Login(_Base):
 class CambioPassword(_Base):
     password_actual: str = Field(min_length=1, max_length=256)
     password_nueva: str = Field(min_length=1, max_length=256)
+
+
+class Verificacion2FA(_Base):
+    desafio: str = Field(min_length=10, max_length=2000)
+    codigo: str = Field(min_length=6, max_length=20)
+
+
+class Codigo2FA(_Base):
+    codigo: str = Field(min_length=6, max_length=20)
+
+
+class Password(_Base):
+    password: str = Field(min_length=1, max_length=256)
+
+
+class PasswordYCodigo(_Base):
+    password: str = Field(min_length=1, max_length=256)
+    codigo: str = Field(min_length=6, max_length=20)
+
+
+class EliminarCuenta(_Base):
+    password: str = Field(min_length=1, max_length=256)
+    confirmacion: Literal["ELIMINAR"]
+    codigo: str | None = Field(default=None, min_length=6, max_length=20)
 
 
 class SolicitudInvestigador(_Base):
@@ -101,6 +130,64 @@ def _emitir_sesion(respuesta, usuario, request, familia=None):
     poner_cookies_sesion(respuesta, crear_access_token(usuario), refresh)
 
 
+def _registro_consentimiento(request, momento):
+    return {
+        "version": config.POLITICA_VERSION,
+        "fecha": momento,
+        "ip": auditoria.ip_cliente(request),
+        "medio": "formulario web",
+    }
+
+
+def _registrar_fallo(usuario, request, motivo):
+    """Cuenta un intento fallido y bloquea la cuenta si se alcanza el máximo."""
+    intentos = int(usuario.get("intentos_fallidos", 0)) + 1
+    cambios = {"intentos_fallidos": intentos}
+    if intentos >= config.MAX_INTENTOS_FALLIDOS:
+        cambios = {"intentos_fallidos": 0, "bloqueado_hasta": ahora() + timedelta(minutes=config.MINUTOS_BLOQUEO)}
+        auditoria.registrar("cuenta_bloqueada", request, usuario, detalle=f"{intentos} intentos fallidos", exito=False)
+    db.usuarios.update_one({"_id": usuario["_id"]}, {"$set": cambios})
+    auditoria.registrar("login", request, usuario, detalle=motivo, exito=False)
+
+
+def _esta_bloqueado(usuario):
+    bloqueado_hasta = a_utc(usuario.get("bloqueado_hasta"))
+    return bool(bloqueado_hasta and bloqueado_hasta > ahora())
+
+
+def _completar_login(usuario, request, response, metodo):
+    cambios = {"intentos_fallidos": 0, "bloqueado_hasta": None, "ultimo_acceso": ahora()}
+    db.usuarios.update_one({"_id": usuario["_id"]}, {"$set": cambios})
+    usuario.update(cambios)
+    auditoria.registrar("login", request, usuario, detalle=metodo)
+    _emitir_sesion(response, usuario, request)
+    return {"usuario": usuario_publico(usuario)}
+
+
+def _verificar_segundo_factor(usuario, codigo):
+    """Valida un código TOTP o de recuperación. Devuelve (ok, metodo).
+
+    Si es válido, guarda el paso usado (TOTP) o elimina el código de
+    recuperación consumido.
+    """
+    config2fa = usuario.get("dos_pasos") or {}
+    secreto = dos_pasos.descifrar(config2fa.get("secreto", ""))
+    if secreto:
+        paso = dos_pasos.verificar_totp(secreto, codigo, config2fa.get("ultimo_paso"))
+        if paso is not None:
+            resultado = db.usuarios.update_one(
+                # Condición atómica: el mismo código no se acepta dos veces.
+                {"_id": usuario["_id"], "$or": [{"dos_pasos.ultimo_paso": None}, {"dos_pasos.ultimo_paso": {"$lt": paso}}]},
+                {"$set": {"dos_pasos.ultimo_paso": paso}},
+            )
+            return resultado.modified_count == 1, "totp"
+    restantes = dos_pasos.usar_codigo_recuperacion(config2fa.get("recuperacion"), codigo)
+    if restantes is not None:
+        db.usuarios.update_one({"_id": usuario["_id"]}, {"$set": {"dos_pasos.recuperacion": restantes}})
+        return True, "codigo de recuperacion"
+    return False, None
+
+
 def revocar_sesiones_usuario(usuario_id):
     db.sesiones.update_many(
         {"usuario_id": usuario_id, "revocado_en": None},
@@ -116,6 +203,12 @@ def revocar_sesiones_usuario(usuario_id):
 def registro(datos: Registro, request: Request, response: Response):
     ip = auditoria.ip_cliente(request)
     verificar_limite(f"registro:{ip}", maximo=5, ventana_segundos=3600)
+
+    if not datos.acepta_politica:
+        raise HTTPException(
+            status_code=400,
+            detail="Debe aceptar la política de tratamiento de datos personales para crear una cuenta.",
+        )
 
     email = datos.email.lower()
     error = validar_politica_password(datos.password, email, datos.nombre)
@@ -136,6 +229,8 @@ def registro(datos: Registro, request: Request, response: Response):
         "intentos_fallidos": 0,
         "bloqueado_hasta": None,
         "solicitud": None,
+        # Prueba de la autorización (Decreto 1377 de 2013, art. 8).
+        "consentimiento": _registro_consentimiento(request, momento),
         "creado_en": momento,
         "ultimo_acceso": momento,
     }
@@ -166,8 +261,7 @@ def login(datos: Login, request: Request, response: Response):
         auditoria.registrar("login", request, email=email, detalle="correo no registrado", exito=False)
         raise HTTPException(status_code=401, detail=MENSAJE_CREDENCIALES)
 
-    bloqueado_hasta = a_utc(usuario.get("bloqueado_hasta"))
-    if bloqueado_hasta and bloqueado_hasta > ahora():
+    if _esta_bloqueado(usuario):
         verificar_tiempo_constante(datos.password)
         auditoria.registrar("login", request, usuario, detalle="cuenta bloqueada temporalmente", exito=False)
         raise HTTPException(
@@ -177,28 +271,60 @@ def login(datos: Login, request: Request, response: Response):
 
     valida, necesita_rehash = verificar_password(datos.password, usuario.get("password_hash"))
     if not valida:
-        intentos = int(usuario.get("intentos_fallidos", 0)) + 1
-        cambios = {"intentos_fallidos": intentos}
-        if intentos >= config.MAX_INTENTOS_FALLIDOS:
-            cambios = {"intentos_fallidos": 0, "bloqueado_hasta": ahora() + timedelta(minutes=config.MINUTOS_BLOQUEO)}
-            auditoria.registrar("cuenta_bloqueada", request, usuario, detalle=f"{intentos} intentos fallidos", exito=False)
-        db.usuarios.update_one({"_id": usuario["_id"]}, {"$set": cambios})
-        auditoria.registrar("login", request, usuario, detalle="contraseña incorrecta", exito=False)
+        _registrar_fallo(usuario, request, "contraseña incorrecta")
         raise HTTPException(status_code=401, detail=MENSAJE_CREDENCIALES)
 
     if not usuario.get("activo", False):
         auditoria.registrar("login", request, usuario, detalle="cuenta desactivada", exito=False)
         raise HTTPException(status_code=403, detail="Su cuenta está desactivada. Contacte al administrador.")
 
-    cambios = {"intentos_fallidos": 0, "bloqueado_hasta": None, "ultimo_acceso": ahora()}
     if necesita_rehash:
-        cambios["password_hash"] = hash_password(datos.password)
-    db.usuarios.update_one({"_id": usuario["_id"]}, {"$set": cambios})
-    usuario.update(cambios)
+        db.usuarios.update_one({"_id": usuario["_id"]}, {"$set": {"password_hash": hash_password(datos.password)}})
 
-    auditoria.registrar("login", request, usuario)
-    _emitir_sesion(response, usuario, request)
-    return {"usuario": usuario_publico(usuario)}
+    # Con verificación en dos pasos, la contraseña sola NO abre sesión:
+    # se entrega un desafío de 5 minutos para enviar el código del celular.
+    if (usuario.get("dos_pasos") or {}).get("activo"):
+        auditoria.registrar("login_primer_paso", request, usuario)
+        return {"requiere_2fa": True, "desafio": dos_pasos.crear_desafio(usuario)}
+
+    return _completar_login(usuario, request, response, "contraseña")
+
+
+@router.post("/2fa/verificar")
+def verificar_2fa(datos: Verificacion2FA, request: Request, response: Response):
+    """Segundo paso del inicio de sesión."""
+    ip = auditoria.ip_cliente(request)
+    verificar_limite(f"2fa:{ip}", maximo=10, ventana_segundos=300)
+
+    carga = dos_pasos.leer_desafio(datos.desafio)
+    if not carga:
+        raise HTTPException(status_code=401, detail="El tiempo para ingresar el código venció. Inicie sesión de nuevo.")
+    try:
+        usuario = db.usuarios.find_one({"_id": ObjectId(carga["sub"])})
+    except (InvalidId, TypeError):
+        usuario = None
+    if (
+        usuario is None
+        or not usuario.get("activo", False)
+        or int(usuario.get("token_version", 0)) != int(carga.get("ver", -1))
+        or not (usuario.get("dos_pasos") or {}).get("activo")
+    ):
+        raise HTTPException(status_code=401, detail="Inicie sesión de nuevo.")
+
+    if _esta_bloqueado(usuario):
+        raise HTTPException(
+            status_code=423,
+            detail=f"Cuenta bloqueada temporalmente por intentos fallidos. Intente en {config.MINUTOS_BLOQUEO} minutos.",
+        )
+
+    ok, metodo = _verificar_segundo_factor(usuario, datos.codigo)
+    if not ok:
+        _registrar_fallo(usuario, request, "código de verificación incorrecto")
+        raise HTTPException(status_code=401, detail="Código incorrecto o ya utilizado.")
+
+    # Se recarga para reflejar el código de recuperación consumido.
+    usuario = db.usuarios.find_one({"_id": usuario["_id"]})
+    return _completar_login(usuario, request, response, f"contraseña + {metodo}")
 
 
 @router.post("/refresh")
@@ -332,3 +458,167 @@ def solicitar_investigador(datos: SolicitudInvestigador, request: Request, usuar
     usuario["solicitud"] = solicitud
     auditoria.registrar("solicitud_investigador", request, usuario, detalle={"institucion": datos.institucion})
     return {"usuario": usuario_publico(usuario)}
+
+
+# ------------------------------------------------------------
+# Verificación en dos pasos: configuración
+# ------------------------------------------------------------
+
+@router.post("/2fa/iniciar")
+def iniciar_2fa(datos: Password, request: Request, usuario=Depends(requerir_sesion)):
+    """Genera un secreto nuevo (pendiente) y su código QR."""
+    verificar_limite(f"2fa-config:{usuario['_id']}", maximo=10, ventana_segundos=900)
+    valida, _ = verificar_password(datos.password, usuario.get("password_hash"))
+    if not valida:
+        raise HTTPException(status_code=400, detail="La contraseña no es correcta.")
+    if (usuario.get("dos_pasos") or {}).get("activo"):
+        raise HTTPException(status_code=400, detail="La verificación en dos pasos ya está activa.")
+
+    secreto = dos_pasos.nuevo_secreto()
+    db.usuarios.update_one(
+        {"_id": usuario["_id"]},
+        {"$set": {"dos_pasos_pendiente": {"secreto": dos_pasos.cifrar(secreto), "creado_en": ahora()}}},
+    )
+    uri = dos_pasos.uri_configuracion(secreto, usuario["email"])
+    return {
+        "qr": dos_pasos.qr_svg_data_uri(uri),
+        # Para escribirlo a mano si no se puede escanear el QR.
+        "clave_manual": " ".join(secreto[i:i + 4] for i in range(0, len(secreto), 4)),
+    }
+
+
+@router.post("/2fa/activar")
+def activar_2fa(datos: Codigo2FA, request: Request, usuario=Depends(requerir_sesion)):
+    """Confirma la configuración con un código del celular y entrega los códigos de recuperación."""
+    verificar_limite(f"2fa-config:{usuario['_id']}", maximo=10, ventana_segundos=900)
+    pendiente = usuario.get("dos_pasos_pendiente") or {}
+    secreto = dos_pasos.descifrar(pendiente.get("secreto", ""))
+    creado = a_utc(pendiente.get("creado_en"))
+    if not secreto or not creado or creado < ahora() - timedelta(minutes=15):
+        raise HTTPException(status_code=400, detail="La configuración venció. Empiece de nuevo.")
+
+    paso = dos_pasos.verificar_totp(secreto, datos.codigo)
+    if paso is None:
+        raise HTTPException(
+            status_code=400,
+            detail="El código no coincide. Verifique que la hora de su celular esté en automático e intente con el código actual.",
+        )
+
+    codigos, hashes = dos_pasos.generar_codigos_recuperacion()
+    db.usuarios.update_one(
+        {"_id": usuario["_id"]},
+        {
+            "$set": {
+                "dos_pasos": {
+                    "activo": True,
+                    "secreto": pendiente["secreto"],
+                    "ultimo_paso": paso,
+                    "recuperacion": hashes,
+                    "activado_en": ahora(),
+                }
+            },
+            "$unset": {"dos_pasos_pendiente": ""},
+        },
+    )
+    auditoria.registrar("2fa_activado", request, usuario)
+    actualizado = db.usuarios.find_one({"_id": usuario["_id"]})
+    return {"codigos_recuperacion": codigos, "usuario": usuario_publico(actualizado)}
+
+
+@router.post("/2fa/regenerar-codigos")
+def regenerar_codigos(datos: PasswordYCodigo, request: Request, usuario=Depends(requerir_sesion)):
+    verificar_limite(f"2fa-config:{usuario['_id']}", maximo=10, ventana_segundos=900)
+    if not (usuario.get("dos_pasos") or {}).get("activo"):
+        raise HTTPException(status_code=400, detail="La verificación en dos pasos no está activa.")
+    valida, _ = verificar_password(datos.password, usuario.get("password_hash"))
+    ok, _ = _verificar_segundo_factor(usuario, datos.codigo) if valida else (False, None)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Contraseña o código incorrectos.")
+    codigos, hashes = dos_pasos.generar_codigos_recuperacion()
+    db.usuarios.update_one({"_id": usuario["_id"]}, {"$set": {"dos_pasos.recuperacion": hashes}})
+    auditoria.registrar("2fa_codigos_regenerados", request, usuario)
+    return {"codigos_recuperacion": codigos, "usuario": usuario_publico(db.usuarios.find_one({"_id": usuario["_id"]}))}
+
+
+@router.post("/2fa/desactivar")
+def desactivar_2fa(datos: PasswordYCodigo, request: Request, usuario=Depends(requerir_sesion)):
+    verificar_limite(f"2fa-config:{usuario['_id']}", maximo=10, ventana_segundos=900)
+    if not (usuario.get("dos_pasos") or {}).get("activo"):
+        raise HTTPException(status_code=400, detail="La verificación en dos pasos no está activa.")
+    if usuario.get("rol") == config.ROL_ADMIN and config.EXIGIR_2FA_ADMIN:
+        raise HTTPException(status_code=400, detail="Los administradores deben mantener activa la verificación en dos pasos.")
+    valida, _ = verificar_password(datos.password, usuario.get("password_hash"))
+    ok, _ = _verificar_segundo_factor(usuario, datos.codigo) if valida else (False, None)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Contraseña o código incorrectos.")
+    db.usuarios.update_one({"_id": usuario["_id"]}, {"$unset": {"dos_pasos": ""}})
+    auditoria.registrar("2fa_desactivado", request, usuario)
+    return {"usuario": usuario_publico(db.usuarios.find_one({"_id": usuario["_id"]}))}
+
+
+# ------------------------------------------------------------
+# Derechos del titular (Ley 1581 de 2012): conocer, aceptar, suprimir
+# ------------------------------------------------------------
+
+@router.post("/aceptar-politica")
+def aceptar_politica(request: Request, usuario=Depends(requerir_sesion_permitiendo_cambio)):
+    """Para cuentas creadas antes de la política o cuando cambia su versión."""
+    consentimiento = _registro_consentimiento(request, ahora())
+    db.usuarios.update_one({"_id": usuario["_id"]}, {"$set": {"consentimiento": consentimiento}})
+    usuario["consentimiento"] = consentimiento
+    auditoria.registrar("politica_aceptada", request, usuario, detalle={"version": config.POLITICA_VERSION})
+    return {"usuario": usuario_publico(usuario)}
+
+
+@router.get("/mis-datos")
+def mis_datos(request: Request, usuario=Depends(requerir_sesion_permitiendo_cambio)):
+    """Copia de los datos personales que Coraleum guarda sobre la persona."""
+    verificar_limite(f"mis-datos:{usuario['_id']}", maximo=10, ventana_segundos=3600)
+    consentimiento = usuario.get("consentimiento") or {}
+    eventos = db.auditoria_accesos.find({"usuario_id": usuario["_id"]}, {"_id": 0, "usuario_id": 0}).sort("fecha", -1).limit(500)
+    auditoria.registrar("datos_descargados", request, usuario)
+    return {
+        "generado_en": ahora().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "responsable": "Coraleum — ver Política de tratamiento de datos personales",
+        "cuenta": usuario_publico(usuario),
+        "consentimiento": {
+            "version": consentimiento.get("version"),
+            "fecha": consentimiento["fecha"].strftime("%Y-%m-%dT%H:%M:%SZ") if consentimiento.get("fecha") else None,
+            "ip": consentimiento.get("ip"),
+            "medio": consentimiento.get("medio"),
+        },
+        "solicitud_investigador": usuario_publico(usuario).get("solicitud"),
+        "registro_de_actividad": [
+            {**e, "fecha": e["fecha"].strftime("%Y-%m-%dT%H:%M:%SZ")} for e in eventos
+        ],
+        "datos_no_incluidos": "La contraseña y el secreto de verificación en dos pasos se guardan cifrados o como hash irreversible.",
+    }
+
+
+@router.post("/eliminar-cuenta")
+def eliminar_cuenta(datos: EliminarCuenta, request: Request, response: Response, usuario=Depends(requerir_sesion_permitiendo_cambio)):
+    """Supresión de la cuenta y sus datos personales.
+
+    El registro de auditoría se conserva por seguridad pero se ANONIMIZA
+    (se borran correo, IP y navegador asociados a la persona).
+    """
+    verificar_limite(f"eliminar:{usuario['_id']}", maximo=5, ventana_segundos=900)
+    valida, _ = verificar_password(datos.password, usuario.get("password_hash"))
+    if not valida:
+        raise HTTPException(status_code=400, detail="La contraseña no es correcta.")
+    if (usuario.get("dos_pasos") or {}).get("activo"):
+        ok, _ = _verificar_segundo_factor(usuario, datos.codigo or "") if datos.codigo else (False, None)
+        if not ok:
+            raise HTTPException(status_code=400, detail="Ingrese un código válido de su aplicación de autenticación.")
+    if usuario.get("rol") == config.ROL_ADMIN and db.usuarios.count_documents({"rol": config.ROL_ADMIN, "activo": True}) <= 1:
+        raise HTTPException(status_code=400, detail="Es el único administrador activo. Asigne otro administrador antes de eliminar su cuenta.")
+
+    db.sesiones.delete_many({"usuario_id": usuario["_id"]})
+    db.auditoria_accesos.update_many(
+        {"usuario_id": usuario["_id"]},
+        {"$set": {"email": None, "ip": None, "user_agent": None, "usuario_id": None, "anonimizado": True}},
+    )
+    db.usuarios.delete_one({"_id": usuario["_id"]})
+    auditoria.registrar("cuenta_eliminada", None, detalle="supresión solicitada por el titular")
+    borrar_cookies_sesion(response)
+    return {"ok": True}

@@ -99,6 +99,17 @@ def requerir_roles(*roles):
     return dependencia
 
 
+def requerir_admin_con_2fa(request: Request, usuario=Depends(requerir_roles(config.ROL_ADMIN))):
+    """Administrador que además tiene activa la verificación en dos pasos."""
+    if config.EXIGIR_2FA_ADMIN and not (usuario.get("dos_pasos") or {}).get("activo"):
+        raise HTTPException(
+            status_code=403,
+            detail="Por seguridad, los administradores deben activar la verificación en dos pasos.",
+            headers={"X-Coraleum-Accion": "configurar-2fa"},
+        )
+    return usuario
+
+
 def usuario_publico(usuario):
     """Representación segura de un usuario (sin hash ni datos internos)."""
     solicitud = usuario.get("solicitud") or None
@@ -120,6 +131,12 @@ def usuario_publico(usuario):
         "solicitud": solicitud,
         "creado_en": _iso(usuario.get("creado_en")),
         "ultimo_acceso": _iso(usuario.get("ultimo_acceso")),
+        "dos_pasos": bool((usuario.get("dos_pasos") or {}).get("activo")),
+        "codigos_recuperacion_restantes": len((usuario.get("dos_pasos") or {}).get("recuperacion") or [])
+        if (usuario.get("dos_pasos") or {}).get("activo") else None,
+        "politica_version": (usuario.get("consentimiento") or {}).get("version"),
+        # True si la persona no ha aceptado la versión vigente de la política.
+        "politica_pendiente": (usuario.get("consentimiento") or {}).get("version") != config.POLITICA_VERSION,
     }
 
 

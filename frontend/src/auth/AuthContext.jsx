@@ -50,15 +50,27 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener(EVENTO_SESION, alAviso);
   }, []);
 
+  /**
+   * Primer paso del inicio de sesión. Si la cuenta tiene verificación en dos
+   * pasos, devuelve { requiere2fa, desafio } y la sesión aún no se abre.
+   */
   const login = useCallback(async (email, password) => {
-    const { usuario: u } = await auth.login(email, password);
+    const respuesta = await auth.login(email, password);
+    if (respuesta.requiere_2fa) return { requiere2fa: true, desafio: respuesta.desafio };
+    setUsuario(respuesta.usuario);
+    setAviso('');
+    return { usuario: respuesta.usuario };
+  }, []);
+
+  const verificar2fa = useCallback(async (desafio, codigo) => {
+    const { usuario: u } = await auth.verificar2fa(desafio, codigo);
     setUsuario(u);
     setAviso('');
     return u;
   }, []);
 
-  const registro = useCallback(async (nombre, email, password) => {
-    const { usuario: u } = await auth.registro(nombre, email, password);
+  const registro = useCallback(async (nombre, email, password, aceptaPolitica) => {
+    const { usuario: u } = await auth.registro(nombre, email, password, aceptaPolitica);
     setUsuario(u);
     setAviso('');
     return u;
@@ -78,14 +90,16 @@ export function AuthProvider({ children }) {
       aviso,
       setAviso,
       login,
+      verificar2fa,
       registro,
       logout,
+      debeAceptarPolitica: Boolean(usuario?.politica_pendiente),
       recargar: cargarSesion,
       autenticado: Boolean(usuario),
       puedeVerDatos: rol === 'investigador' || rol === 'admin',
       esAdmin: rol === 'admin',
     };
-  }, [usuario, cargando, aviso, login, registro, logout, cargarSesion]);
+  }, [usuario, cargando, aviso, login, verificar2fa, registro, logout, cargarSesion]);
 
   return <AuthContext.Provider value={valor}>{children}</AuthContext.Provider>;
 }

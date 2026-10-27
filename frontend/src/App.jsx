@@ -10,7 +10,8 @@ import ViewDetalle from './views/ViewDetalle';
 import ViewResumen from './views/ViewResumen';
 import ViewMetodologia from './views/ViewMetodologia';
 import ViewAcceso from './views/ViewAcceso';
-import ViewCuenta, { CambioPasswordObligatorio } from './views/ViewCuenta';
+import ViewCuenta, { AceptarPoliticaObligatorio, CambioPasswordObligatorio } from './views/ViewCuenta';
+import ViewPrivacidad from './views/ViewPrivacidad';
 import ViewAdmin from './views/ViewAdmin';
 import AccesoRestringido from './components/AccesoRestringido';
 import { useAuth, ROLES } from './auth/AuthContext';
@@ -46,7 +47,7 @@ class ViewErrorBoundary extends React.Component {
 }
 
 export default function App() {
-  const { usuario, cargando: cargandoSesion, autenticado, puedeVerDatos, esAdmin, logout } = useAuth();
+  const { usuario, cargando: cargandoSesion, autenticado, puedeVerDatos, esAdmin, logout, debeAceptarPolitica } = useAuth();
   const [view, setView] = useState('inicio');
   const [selectedArea, setSelectedArea] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -67,7 +68,7 @@ export default function App() {
   // Los datos ambientales solo se piden si el rol lo permite y la cuenta no
   // tiene una contraseña temporal pendiente; si el usuario cierra sesión o
   // pierde el permiso, se borran de la memoria.
-  const datosHabilitados = puedeVerDatos && !usuario?.debe_cambiar_password;
+  const datosHabilitados = puedeVerDatos && !usuario?.debe_cambiar_password && !debeAceptarPolitica;
   const usuarioId = usuario?.id || null;
 
   useEffect(() => {
@@ -152,6 +153,7 @@ export default function App() {
     registro: 'Crear cuenta',
     cuenta: 'Mi cuenta',
     admin: 'Administración',
+    privacidad: 'Política de datos',
   };
 
   function alAcceder(u, modo) {
@@ -204,10 +206,12 @@ export default function App() {
       case 'acceso':
       case 'registro':
         return autenticado
-          ? <ViewCuenta />
+          ? <ViewCuenta onNavigate={navigate} />
           : <ViewAcceso key={view} modoInicial={view === 'registro' ? 'registro' : 'login'} onExito={alAcceder} />;
       case 'cuenta':
-        return autenticado ? <ViewCuenta /> : null;
+        return autenticado ? <ViewCuenta onNavigate={navigate} /> : null;
+      case 'privacidad':
+        return <ViewPrivacidad />;
       case 'admin':
         return esAdmin ? <ViewErrorBoundary><ViewAdmin onPendientes={setPendientes} /></ViewErrorBoundary> : null;
       default:
@@ -228,6 +232,15 @@ export default function App() {
     return (
       <div style={{ height: '100dvh', background: 'linear-gradient(145deg, #0f303a 0%, #123b45 100%)' }}>
         <CambioPasswordObligatorio />
+      </div>
+    );
+  }
+
+  // Cuentas sin la autorización vigente (Ley 1581): deben aceptarla primero.
+  if (debeAceptarPolitica) {
+    return (
+      <div style={{ height: '100dvh', background: 'linear-gradient(145deg, #0f303a 0%, #123b45 100%)' }}>
+        <AceptarPoliticaObligatorio />
       </div>
     );
   }

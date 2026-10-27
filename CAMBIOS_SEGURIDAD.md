@@ -83,3 +83,60 @@ y 2.6 (Pruebas) del documento.
 | RS14 | El sistema debe registrar los eventos de seguridad sin almacenar secretos. |
 
 Pruebas: `tests/test_auth.py` (28 casos) verifica cada uno de estos controles.
+
+## Segunda fase de seguridad
+
+### Verificación en dos pasos (TOTP, RFC 6238)
+
+| Control | Implementación |
+|---|---|
+| Obligatoria para administradores | El panel de administración responde 403 hasta activarla |
+| Inicio de sesión en dos pasos | La contraseña correcta solo entrega un desafío firmado de 5 minutos; la sesión se abre con el código |
+| Secreto protegido | Cifrado con Fernet (AES-128-CBC + HMAC-SHA256), clave derivada de `JWT_SECRET` |
+| Anti-repetición | Cada código se acepta una sola vez (se guarda el último paso de tiempo usado, de forma atómica) |
+| Recuperación | 8 códigos de un solo uso, guardados como hash; regenerables |
+| Fuerza bruta | Los códigos incorrectos cuentan para el bloqueo de la cuenta |
+| Pérdida del celular | Otro administrador puede quitar la 2FA (queda en auditoría) |
+
+### Protección de datos personales (Ley 1581 de 2012; Decreto 1377 de 2013, compilado en el Decreto 1074 de 2015)
+
+| Requisito legal | Implementación |
+|---|---|
+| Autorización previa, expresa e informada | Casilla obligatoria en el registro, validada también en el backend |
+| Prueba de la autorización (art. 8 D. 1377) | Se guarda versión de la política, fecha, IP y medio |
+| Política de tratamiento (art. 13 D. 1377) | Página pública con responsable, finalidades, derechos, procedimiento y vigencia |
+| Cambios sustanciales de la política | Al cambiar `POLITICA_VERSION` se pide aceptar de nuevo |
+| Derecho de acceso | "Descargar mis datos" (JSON, sin hashes ni secretos) |
+| Supresión y revocación (art. 9 D. 1377) | "Eliminar mi cuenta": borra datos y sesiones; anonimiza la auditoría |
+
+### Copias de seguridad
+
+`scripts/respaldo_mongodb.py`: copias comprimidas con `mongodump`, huella SHA-256, verificación de lectura (`mongorestore --dryRun`),
+rotación (14 copias), restauración con confirmación y copia previa del estado actual. La contraseña no aparece en la línea de comandos.
+
+### Pipeline de seguridad (`.gitlab-ci.yml`)
+
+| Trabajo | Qué verifica |
+|---|---|
+| pruebas-backend | 48 pruebas automáticas |
+| construir-frontend | Que el frontend compile |
+| integridad-historico | Huella SHA-256 del CSV histórico |
+| vulnerabilidades-python | `pip-audit` sobre las dependencias de Python |
+| vulnerabilidades-npm | `npm audit` (severidad alta o crítica) |
+| analisis-codigo-bandit | Análisis estático de seguridad del código Python |
+| secretos-gitleaks | Contraseñas o claves en todo el historial de Git |
+
+**Hallazgo real del pipeline:** `pip-audit` detectó vulnerabilidades publicadas en Starlette 0.47.3 (incluida por FastAPI 0.116.1),
+PyMongo 4.17.0, urllib3 2.7.0 y certifi 2026.7.22. Se actualizaron a FastAPI 0.162.0, Starlette 1.10.0, PyMongo 4.19.0,
+urllib3 2.8.0 y certifi 2026.10.19; las 48 pruebas siguen pasando y la auditoría queda en cero.
+
+### Requisitos adicionales propuestos para el documento
+
+| Código | Requisito |
+|---|---|
+| RF20 | El sistema debe solicitar la autorización expresa para el tratamiento de datos personales al registrarse. |
+| RF21 | El sistema debe permitir a cada usuario descargar sus datos y eliminar su cuenta. |
+| RS15 | Las cuentas de administrador deben usar verificación en dos pasos. |
+| RS16 | El sistema debe conservar prueba de la autorización de tratamiento de datos. |
+| RS17 | La base de datos debe respaldarse periódicamente con verificación de integridad. |
+| RS18 | Cada cambio en el repositorio debe pasar pruebas automáticas, auditoría de dependencias, análisis estático y detección de secretos. |

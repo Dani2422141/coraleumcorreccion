@@ -3,6 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import { admin } from '../data/api';
 import { LoadingState } from '../components/LoadingState';
 import { BadgeRol, BadgeSolicitud, Mensaje, formatearFecha } from '../components/Formulario';
+import { ConfigurarDosPasos } from '../components/DosPasos';
 
 const NOMBRES_EVENTO = {
   registro: 'Registro',
@@ -17,6 +18,14 @@ const NOMBRES_EVENTO = {
   usuario_actualizado: 'Usuario actualizado',
   password_restablecida: 'Contraseña restablecida',
   acceso_denegado: 'Acceso denegado',
+  login_primer_paso: 'Contraseña correcta (falta 2FA)',
+  '2fa_activado': '2FA activado',
+  '2fa_desactivado': '2FA desactivado',
+  '2fa_restablecido': '2FA restablecido por admin',
+  '2fa_codigos_regenerados': 'Códigos de recuperación nuevos',
+  politica_aceptada: 'Política de datos aceptada',
+  datos_descargados: 'Descarga de datos personales',
+  cuenta_eliminada: 'Cuenta eliminada por el titular',
 };
 
 function ClaveTemporal({ datos, onCerrar }) {
@@ -118,6 +127,11 @@ function Usuarios({ usuarios, onCambio, miId }) {
     if (window.confirm(texto)) ejecutar(() => admin.actualizar(u.id, { activo: !u.activo }));
   }
 
+  function restablecer2fa(u) {
+    if (!window.confirm(`¿Quitar la verificación en dos pasos de ${u.nombre}? Úselo solo si perdió el celular y sus códigos. Se cerrarán sus sesiones.`)) return;
+    ejecutar(() => admin.restablecer2fa(u.id));
+  }
+
   function restablecer(u) {
     if (!window.confirm(`¿Restablecer la contraseña de ${u.nombre}? Se cerrarán sus sesiones.`)) return;
     ejecutar(async () => {
@@ -134,7 +148,7 @@ function Usuarios({ usuarios, onCambio, miId }) {
       <div className="tabla-scroll">
         <table className="tabla">
           <thead>
-            <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Acciones</th></tr>
+            <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>2FA</th><th>Último acceso</th><th>Acciones</th></tr>
           </thead>
           <tbody>
             {lista.map((u) => {
@@ -155,11 +169,13 @@ function Usuarios({ usuarios, onCambio, miId }) {
                     {u.activo ? <span className="badge badge-aprobada">Activa</span> : <span className="badge badge-inactivo">Desactivada</span>}
                     {u.debe_cambiar_password && <span className="secundario">Clave temporal</span>}
                   </td>
+                  <td>{u.dos_pasos ? <span className="badge badge-aprobada">Activa</span> : <span className={`badge ${u.rol === 'admin' ? 'badge-pendiente' : 'badge-usuario'}`}>{u.rol === 'admin' ? 'Pendiente' : 'No'}</span>}</td>
                   <td>{formatearFecha(u.ultimo_acceso)}</td>
                   <td>
                     {!soyYo && (
                       <div className="acciones">
                         <button type="button" className="btn btn-secundario btn-pequeno" onClick={() => restablecer(u)}>Restablecer clave</button>
+                        {u.dos_pasos && <button type="button" className="btn btn-secundario btn-pequeno" onClick={() => restablecer2fa(u)}>Quitar 2FA</button>}
                         <button type="button" className={`btn btn-pequeno ${u.activo ? 'btn-peligro' : 'btn-secundario'}`} onClick={() => alternarActivo(u)}>
                           {u.activo ? 'Desactivar' : 'Activar'}
                         </button>
@@ -227,6 +243,7 @@ export default function ViewAdmin({ onPendientes }) {
   const [pestana, setPestana] = useState('solicitudes');
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState('');
+  const [falta2fa, setFalta2fa] = useState(false);
 
   const cargar = useCallback(async () => {
     try {
@@ -234,12 +251,30 @@ export default function ViewAdmin({ onPendientes }) {
       setDatos(r);
       onPendientes?.(r.pendientes);
       setError('');
+      setFalta2fa(false);
     } catch (err) {
-      setError(err.message);
+      if (err.accion === 'configurar-2fa') setFalta2fa(true);
+      else setError(err.message);
     }
   }, [onPendientes]);
 
   useEffect(() => { cargar(); }, [cargar]);
+
+  if (falta2fa) {
+    return (
+      <div className="cuenta-page">
+        <div className="cuenta-wrap estrecho">
+          <span className="cuenta-kicker">Administración</span>
+          <h2 className="cuenta-titulo">Activa la verificación en dos pasos</h2>
+          <p className="cuenta-sub">
+            Las cuentas de administrador pueden cambiar roles y ver la actividad de todos los usuarios, por eso deben
+            proteger su acceso con un código del celular además de la contraseña.
+          </p>
+          <div className="cuenta-card"><ConfigurarDosPasos onActivado={cargar} /></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="cuenta-page">

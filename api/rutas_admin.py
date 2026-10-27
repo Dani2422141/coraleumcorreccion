@@ -12,11 +12,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from api import auditoria, config, db
-from api.deps import proteger_csrf, requerir_roles, usuario_publico
+from api.deps import proteger_csrf, requerir_admin_con_2fa, usuario_publico
 from api.rutas_auth import revocar_sesiones_usuario
 from api.seguridad import ahora, generar_password_temporal, hash_password
 
-solo_admin = requerir_roles(config.ROL_ADMIN)
+# Administrador con verificación en dos pasos activa.
+solo_admin = requerir_admin_con_2fa
 
 router = APIRouter(
     prefix="/admin",
@@ -179,6 +180,27 @@ def restablecer_password(usuario_id: str, request: Request, admin=Depends(solo_a
     revocar_sesiones_usuario(usuario["_id"])
     auditoria.registrar("password_restablecida", request, admin, detalle={"usuario": usuario.get("email")})
     return {"password_temporal": temporal, "usuario": usuario_publico(db.usuarios.find_one({"_id": usuario["_id"]}))}
+
+
+@router.post("/usuarios/{usuario_id}/restablecer-2fa")
+def restablecer_2fa(usuario_id: str, request: Request, admin=Depends(solo_admin)):
+    """Desactiva la verificación en dos pasos de otra cuenta (p. ej., perdió el celular).
+
+    La persona deberá configurarla de nuevo; si es administradora, no podrá
+    usar el panel hasta hacerlo. Se cierran sus sesiones abiertas.
+    """
+    usuario = _obtener_usuario(usuario_id)
+    if usuario["_id"] == admin["_id"]:
+        raise HTTPException(status_code=400, detail="No puede restablecer su propia verificación en dos pasos.")
+    if not (usuario.get("dos_pasos") or {}).get("activo"):
+        raise HTTPException(status_code=400, detail="Esta cuenta no tiene activa la verificación en dos pasos.")
+    db.usuarios.update_one(
+        {"_id": usuario["_id"]},
+        {"$unset": {"dos_pasos": ""}, "$set": {"token_version": int(usuario.get("token_version", 0)) + 1}},
+    )
+    revocar_sesiones_usuario(usuario["_id"])
+    auditoria.registrar("2fa_restablecido", request, admin, detalle={"usuario": usuario.get("email")})
+    return {"usuario": usuario_publico(db.usuarios.find_one({"_id": usuario["_id"]}))}
 
 
 @router.get("/auditoria")

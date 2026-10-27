@@ -1,0 +1,20 @@
+# Configuración de Gitleaks (detección de secretos en el repositorio).
+# Usa las reglas por defecto y solo excluye falsos positivos revisados.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Falsos positivos revisados manualmente"
+paths = [
+  # Contraseñas ficticias usadas solo en las pruebas automáticas.
+  '''^tests/''',
+  '''frontend/package-lock\.json''',
+  # Plantilla de configuración: solo contiene valores de ejemplo.
+  '''\.env\.example$''',
+]
+regexes = [
+  # Claves PÚBLICAS del widget de Retell AI: son públicas por diseño
+  # (se restringen por dominio en el panel de Retell).
+  '''public_key_[0-9a-f]+''',
+]

@@ -1,0 +1,92 @@
+# Pipeline de calidad y seguridad de Coraleum.
+#
+# Se ejecuta en cada push y en cada merge request, en los servidores de
+# GitLab (no necesita un servidor propio). Si un trabajo falla, GitLab lo
+# marca en rojo y avisa por correo.
+#
+# Para ejecutarlo también cada semana (detecta vulnerabilidades nuevas
+# aunque nadie haga push): Build → Pipeline schedules → New schedule.
+
+stages:
+  - pruebas
+  - seguridad
+
+default:
+  interruptible: true
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+.python:
+  image: python:3.12-slim
+  cache:
+    key: pip-$CI_JOB_NAME
+    paths: [.cache/pip]
+
+# ------------------------------------------------------------
+# Pruebas
+# ------------------------------------------------------------
+
+pruebas-backend:
+  extends: .python
+  stage: pruebas
+  script:
+    - pip install -r requirements-dev.txt
+    - pytest -q
+  # Pruebas de autenticación, roles, 2FA, Habeas Data y protecciones.
+
+construir-frontend:
+  stage: pruebas
+  image: node:22-alpine
+  cache:
+    key: npm
+    paths: [frontend/.npm]
+  script:
+    - cd frontend
+    - npm ci --cache .npm --prefer-offline
+    - npm run build
+
+integridad-historico:
+  extends: .python
+  stage: pruebas
+  script:
+    # Verifica que el CSV histórico coincida con su huella SHA-256.
+    - python scripts/verificar_integridad.py --check
+
+# ------------------------------------------------------------
+# Seguridad
+# ------------------------------------------------------------
+
+vulnerabilidades-python:
+  extends: .python
+  stage: seguridad
+  script:
+    - pip install pip-audit==2.10.1
+    - pip-audit -r api/requirements.txt
+    - pip-audit -r requirements.txt
+
+vulnerabilidades-npm:
+  stage: seguridad
+  image: node:22-alpine
+  script:
+    - cd frontend
+    - npm audit --audit-level=high
+
+analisis-codigo-bandit:
+  extends: .python
+  stage: seguridad
+  script:
+    - pip install bandit==1.9.4
+    # Falla con hallazgos de severidad media o alta.
+    - bandit -r api scripts -ll
+
+secretos-gitleaks:
+  stage: seguridad
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: "0"  # revisa TODO el historial, no solo el último commit
+  script:
+    - gitleaks git --config .gitleaks.toml --redact --verbose .

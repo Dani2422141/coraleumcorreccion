@@ -89,7 +89,21 @@ export const auth = {
   me: () => request(`${API_PREFIX}/auth/me`),
   renovar: renovarSesion,
   login: (email, password) => request(`${API_PREFIX}/auth/login`, { method: 'POST', body: { email, password } }),
-  registro: (nombre, email, password) => request(`${API_PREFIX}/auth/registro`, { method: 'POST', body: { nombre, email, password } }),
+  registro: (nombre, email, password, aceptaPolitica) => request(`${API_PREFIX}/auth/registro`, {
+    method: 'POST',
+    body: { nombre, email, password, acepta_politica: aceptaPolitica },
+  }),
+  verificar2fa: (desafio, codigo) => request(`${API_PREFIX}/auth/2fa/verificar`, { method: 'POST', body: { desafio, codigo } }),
+  iniciar2fa: (password) => request(`${API_PREFIX}/auth/2fa/iniciar`, { method: 'POST', body: { password } }),
+  activar2fa: (codigo) => request(`${API_PREFIX}/auth/2fa/activar`, { method: 'POST', body: { codigo } }),
+  desactivar2fa: (password, codigo) => request(`${API_PREFIX}/auth/2fa/desactivar`, { method: 'POST', body: { password, codigo } }),
+  regenerarCodigos: (password, codigo) => request(`${API_PREFIX}/auth/2fa/regenerar-codigos`, { method: 'POST', body: { password, codigo } }),
+  aceptarPolitica: () => request(`${API_PREFIX}/auth/aceptar-politica`, { method: 'POST' }),
+  misDatos: () => request(`${API_PREFIX}/auth/mis-datos`),
+  eliminarCuenta: (password, codigo) => request(`${API_PREFIX}/auth/eliminar-cuenta`, {
+    method: 'POST',
+    body: { password, confirmacion: 'ELIMINAR', codigo: codigo || null },
+  }),
   logout: () => request(`${API_PREFIX}/auth/logout`, { method: 'POST' }),
   cambiarPassword: (passwordActual, passwordNueva) => request(`${API_PREFIX}/auth/cambiar-password`, {
     method: 'POST',
@@ -117,6 +131,7 @@ export const admin = {
     body: { decision, comentario: comentario || null },
   }),
   restablecerPassword: (id) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/restablecer-password`, { method: 'POST' }),
+  restablecer2fa: (id) => request(`${API_PREFIX}/admin/usuarios/${encodeURIComponent(id)}/restablecer-2fa`, { method: 'POST' }),
   auditoria: (soloFallidos = false) => request(`${API_PREFIX}/admin/auditoria?limite=200${soloFallidos ? '&solo_fallidos=true' : ''}`),
 };
 

@@ -102,6 +102,17 @@ MINUTOS_BLOQUEO = _int("MINUTOS_BLOQUEO", 15)
 # Conservación del registro de auditoría de accesos.
 DIAS_AUDITORIA = _int("DIAS_AUDITORIA", 180)
 
+# --- Verificación en dos pasos (TOTP) ------------------------
+TOTP_EMISOR = os.getenv("TOTP_EMISOR", "Coraleum")
+# Minutos para completar el segundo paso tras una contraseña correcta.
+MINUTOS_DESAFIO_2FA = 5
+# Los administradores deben tener 2FA para usar el panel de administración.
+EXIGIR_2FA_ADMIN = _bool("EXIGIR_2FA_ADMIN", True)
+
+# --- Protección de datos personales (Ley 1581 de 2012) --------
+# Cambie la versión cuando modifique la política: queda registrada con cada consentimiento.
+POLITICA_VERSION = "2026-10"
+
 # --- Roles ---------------------------------------------------
 ROL_USUARIO = "usuario"
 ROL_INVESTIGADOR = "investigador"
