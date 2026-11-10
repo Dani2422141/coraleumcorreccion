@@ -7,7 +7,7 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  azureSubscription: 'sc-coraleum'
+  azureSubscription: 'coraleum'
   acrName: 'coraleumacr2026'
   imageName: 'coraleum-frontend'
   containerApp: 'coraleum-frontend'
