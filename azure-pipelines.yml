@@ -1,0 +1,40 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  azureSubscription: 'sc-coraleum'
+  acrName: 'coraleumacr2026'
+  imageName: 'coraleum-frontend'
+  containerApp: 'coraleum-frontend'
+  resourceGroup: 'rg-coraleum'
+
+steps:
+  - task: AzureCLI@2
+    displayName: Build y push de la imagen a ACR
+    inputs:
+      azureSubscription: $(azureSubscription)
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        az acr build \
+          --registry $(acrName) \
+          --image $(imageName):$(Build.BuildId) \
+          .
+
+  - task: AzureCLI@2
+    displayName: Actualizar la Container App
+    inputs:
+      azureSubscription: $(azureSubscription)
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        az extension add --name containerapp --upgrade --only-show-errors
+        az containerapp update \
+          --name $(containerApp) \
+          --resource-group $(resourceGroup) \
+          --image $(acrName).azurecr.io/$(imageName):$(Build.BuildId)
